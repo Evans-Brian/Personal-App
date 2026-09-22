@@ -27,7 +27,7 @@ class PeopleTests(unittest.TestCase):
     def test_independent_people_do_not_overwrite_each_other(self):
         self.store.add(self.person)
         self.store.add({'action':'person','id':str(uuid4()),'name':'Sam','relation':'Coworker'})
-        self.assertEqual(len(self.store.read()['people']),2)
+        self.assertEqual(len(self.store.read()['people']),2)
     def test_relation_edit_preserves_notes_and_rejects_stale_edit(self):
         self.store.add(self.person)
         self.store.add({'action':'note','id':str(uuid4()),'person_id':self.person['id'],'date':'2026-09-21','text':'Keep this note'})
