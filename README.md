@@ -118,3 +118,9 @@ People is available from the top navigation. Add a name and relation, select a p
 ### Evening task edits and follow-ups
 
 Each evening checklist item has **Edit task / add follow-up**. The evening description can describe the portion actually completed; the morning plan remains unchanged and is shown for reference. Tick the revised task when done, enter the remaining work, and click **Add follow-up**, then **Save evening entry**. A follow-up is its own unchecked task in the same category and can itself be edited. Inline Markdown metadata preserves original text and the parent relationship. The next carry-forward review uses edited evening descriptions and includes unfinished follow-ups. Carry-forward still reviews the latest previous entry with plans; a persistent backlog remains a separate proposed feature.
+
+## Recovering the background server on Windows
+
+Run `powershell -ExecutionPolicy Bypass -File .\install-background-task.ps1` once as your normal Windows user. Windows Task Scheduler starts the local server at login and checks every minute to relaunch it if it exits. Only one scheduled instance runs at a time, with no execution time limit or battery shutdown. The desktop launcher still works. The existing login shortcut is harmless: the launcher reuses an already running server.
+
+The server stays local to this PC. It cannot serve requests while the PC is asleep, powered off, or signed out. GitHub stores source code; it does not host the running app. To stop background recovery, disable the **Personal Journal** task in Windows Task Scheduler. Logs are in `data/startup.log` and are never committed.
