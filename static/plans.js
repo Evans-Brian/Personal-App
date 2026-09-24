@@ -52,9 +52,9 @@
       return index<0?{text,done:false}:remaining.splice(index,1)[0];
     });
     // Keep old check-in items if morning text later changes, rather than lose history.
-    return tasks.concat(remaining.map(t=>({...t,earlier:!t.followup})));
+    return tasks.concat(remaining.map(t=>({...t,earlier:!t.followup && !t.eveningAdded})));
   }
-  function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
+  function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
   const api={jo,serializeJO,items,morning,split,reconcile,serialize,optional,optionalTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

@@ -35,3 +35,6 @@ const joValue={jo:true,worth_it:true,why:'Some text\nwith another line'};
 assertJO.deepEqual(joPlans.jo('Body'+joPlans.serializeJO(joValue)).value,joValue);
 assertJO.equal(joPlans.split('Body'+joPlans.serializeJO(joValue)).body,'Body');
 assertJO.equal(joPlans.jo('Old note').value.jo,false);
+const eveningNew={text:'Evening errand',original:'Evening errand',done:false,eveningAdded:true};
+assert.equal(p.split(p.serialize([eveningNew])).tasks[0].eveningAdded,true);
+assert.equal(p.reconcile([],p.split(p.serialize([eveningNew])).tasks)[0].earlier,false);

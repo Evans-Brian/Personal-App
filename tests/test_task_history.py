@@ -115,3 +115,11 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertIn('[If time] Buy weights',due['items'])
         self.assertEqual(next(i for i in due['entries'] if i['text']=='[If time] Buy weights')['key'],key)
         self.assertIn('[If time] Buy weights',self.j.carryover('2026-09-22')['items'])
+    def test_evening_only_tasks_carry_and_record_completion(self):
+        body='### Morning plans — evening check-in\n\n- [ ] New evening plan\n- [x] [If time] Finished errand\n'
+        self.save('2026-09-15','evening',body)
+        self.assertEqual(self.j.carryover('2026-09-16')['items'],['New evening plan'])
+        completed=self.j.task_history()[0]
+        self.assertEqual(completed['text'],'Finished errand')
+        self.assertEqual(completed['created'],'2026-09-15')
+        self.assertEqual(completed['completed'],'2026-09-15')

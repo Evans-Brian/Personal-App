@@ -130,8 +130,9 @@ function showEditor(text, preferGuided=true) {
       const decision=deferred[entry.date+':'+(task.original || task.text)];
       return task.done || !(typeof decision==='string' && decision.startsWith('Skipped until ') && decision.slice(14)>entry.date);
     });
-    const title=document.createElement('h3');title.textContent='How did your morning plans go?';el('plan-review').append(title);
-    const hint=document.createElement('p');hint.className='small';hint.textContent=reviewTasks.length?'Check what you got done, then save your evening entry.':'No saved morning plans for this date. Add plans in the morning entry and save it first.';el('plan-review').append(hint);
+    reviewTasks.sort((a,b)=>Number(a.text.startsWith('[If time] '))-Number(b.text.startsWith('[If time] ')));
+    const title=document.createElement('h3');title.textContent='How did your plans go?';el('plan-review').append(title);
+    const hint=document.createElement('p');hint.className='small';hint.textContent=reviewTasks.length?'Check what you got done, then save your evening entry.':'No tasks yet. Add an evening task below.';el('plan-review').append(hint);
     reviewTasks.forEach((task,i)=>{
       if(i>0 && task.text.startsWith('[If time] ')!==reviewTasks[i-1].text.startsWith('[If time] ')){
         const divider=document.createElement('hr');divider.className='plan-group-divider';el('plan-review').append(divider);
@@ -145,7 +146,7 @@ function showEditor(text, preferGuided=true) {
       const editLabel=document.createElement('label');editLabel.textContent='Evening description';
       const edit=document.createElement('input');edit.type='text';edit.value=task.text.replace(/^\[If time\] /,'');edit.maxLength=1000;editLabel.append(edit);tools.append(editLabel);
       const original=task.original || task.text;
-      const context=document.createElement('p');context.className='small';context.textContent=task.followup?'Follow-up to: '+(task.parent || '').replace(/^\[If time\] /,''):'Morning plan: '+original.replace(/^\[If time\] /,'');tools.append(context);
+      const context=document.createElement('p');context.className='small';context.textContent=task.followup?'Follow-up to: '+(task.parent || '').replace(/^\[If time\] /,''):(task.eveningAdded?'Added this evening: ':'Morning plan: ')+original.replace(/^\[If time\] /,'');tools.append(context);
       edit.addEventListener('input',()=>{
         task.original=original;const prefix=original.startsWith('[If time] ')?'[If time] ':'';
         task.text=edit.value.trim()?prefix+edit.value.trim():original;span.textContent=task.text.replace(/^\[If time\] /,'');changed();
@@ -166,6 +167,27 @@ function showEditor(text, preferGuided=true) {
       });tools.append(add);el('plan-review').append(tools);
 
     });
+  }
+  if(guided && period==='evening'){
+    const addSection=document.createElement('div');addSection.className='evening-add';
+    const title=document.createElement('h3');title.textContent='Add an evening task';addSection.append(title);
+    for(const [category,prefix] of [['Good-day plans',''],['If I have time','[If time] ']]){
+      const row=document.createElement('div');row.className='optional-plan-row';
+      const input=document.createElement('input');input.type='text';input.maxLength=1000;input.className='plan-input';input.placeholder=category;input.setAttribute('aria-label','New evening task: '+category);
+      const button=document.createElement('button');button.type='button';button.textContent='+ Add to '+category.toLowerCase();
+      const addTask=()=>{
+        if(busy || !input.value.trim())return;
+        const taskText=prefix+input.value.trim(),current=content(),parsed=JournalPlans.split(current);
+        if(parsed.tasks.some(task=>task.text.toLowerCase()===taskText.toLowerCase())){status('That task is already in this checklist.',true);return;}
+        parsed.tasks.push({text:taskText,original:taskText,done:false,eveningAdded:true});
+        const ratings=`### Daily ratings\n\nGood day: ${parsed.ratings.good || 'unrated'}\nProductive day: ${parsed.ratings.productive || 'unrated'}\n\n`;
+        showEditor(JournalPlans.serialize(parsed.tasks)+ratings+parsed.body+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
+        status('Task added. Check it off if done, then save your evening entry. Unfinished tasks will be offered in carry-forward.');
+      };
+      button.addEventListener('click',addTask);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addTask();}});
+      row.append(input,button);addSection.append(row);
+    }
+    el('plan-review').append(addSection);
   }
   if(guided && period==='evening'){
     const ratings=JournalPlans.split(text).ratings;
