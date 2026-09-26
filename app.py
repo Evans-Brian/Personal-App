@@ -27,7 +27,19 @@ def configured_vault():
     return vault
 
 
-def make_server(vault, database, port=8765):
+def configured_remote():
+    config = ROOT / "config.local.json"
+    return json.loads(config.read_text(encoding="utf-8")).get("remote_access", {}) if config.exists() else {}
+
+
+def make_server(vault, database, port=8765, remote=None):
+    remote = remote or {}
+    remote_origin = remote.get('origin', '')
+    remote_login = remote.get('login', '')
+    if remote_origin:
+        parsed = urlsplit(remote_origin)
+        if parsed.scheme != 'https' or not parsed.hostname or not parsed.hostname.endswith('.ts.net') or parsed.path or parsed.query or parsed.fragment or parsed.username or parsed.port or not remote_login:
+            raise ValueError('Remote access requires an exact Tailscale HTTPS origin and account login.')
     journal = Journal(vault)
     restaurants = Restaurants(vault)
     people = People(vault)
@@ -56,11 +68,17 @@ def make_server(vault, database, port=8765):
 
         def allowed(self):
             host = self.headers.get('Host')
-            return host in (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}') and self.headers.get('Origin', f'http://{host}') == f'http://{host}'
+            local_hosts = (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}')
+            identity = self.headers.get('Tailscale-User-Login')
+            if identity is not None or (remote_origin and host == urlsplit(remote_origin).netloc):
+                return bool(remote_origin and identity == remote_login and
+                            host in (*local_hosts, urlsplit(remote_origin).netloc) and
+                            self.headers.get('Origin', remote_origin) == remote_origin)
+            return host in local_hosts and self.headers.get('Origin', f'http://{host}') == f'http://{host}'
 
         def do_GET(self):
             if not self.allowed():
-                return self.respond(403, {"error": "Open the app using its 127.0.0.1 address."})
+                return self.respond(403, {"error": "Open the app using its local address or configured private Tailscale address."})
             url = urlsplit(self.path)
             try:
                 if url.path == "/api/people":
@@ -160,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     args.vault = args.vault if args.vault is not None else configured_vault()
-    server = make_server(args.vault, args.database, args.port)
+    server = make_server(args.vault, args.database, args.port, configured_remote())
     server.oura_sync.start_worker()
     print(f"Journal ready: http://127.0.0.1:{server.server_port} | Vault: {args.vault.resolve()}", flush=True)
     try:
