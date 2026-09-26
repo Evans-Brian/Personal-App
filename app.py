@@ -112,9 +112,11 @@ def make_server(vault, database, port=8765, remote=None):
                                   query.get('code', [''])[0], query.get('error', [None])[0])
                     return self.respond(303, b'', headers={'Location': f'http://127.0.0.1:{self.server.server_port}/', 'Set-Cookie': 'oura_state=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/api/oura/callback'})
                 assets = {"/people.js": ("people.js", "text/javascript"), "/restaurants.js": ("restaurants.js", "text/javascript"), "/plans.js": ("plans.js", "text/javascript"), "/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
+                assets.update({f"/icon-{size}.png": (f"icon-{size}.png", "image/png") for size in (180,192,512)})
+                assets["/manifest.webmanifest"] = ("manifest.webmanifest", "application/manifest+json")
                 if url.path in assets:
                     name, mime = assets[url.path]
-                    return self.respond(200, (ROOT / "static" / name).read_bytes(), mime + "; charset=utf-8")
+                    return self.respond(200, (ROOT / "static" / name).read_bytes(), mime if mime == "image/png" else mime + "; charset=utf-8")
                 self.respond(404, {"error": "Not found"})
             except (ValueError, OSError) as exc:
                 self.respond(400, {"error": str(exc)})
