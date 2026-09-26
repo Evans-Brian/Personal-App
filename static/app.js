@@ -138,7 +138,9 @@ function showEditor(text, preferGuided=true) {
       reviewTasks.forEach((task,index)=>{
         const row=rows.get(task);list.append(row);
         row.querySelector('input[type="checkbox"]').id=`plan-done-${index}`;
-        row.querySelector('hr').hidden=index===0 || task.text.startsWith('[If time] ')===reviewTasks[index-1].text.startsWith('[If time] ');
+        const startsGroup=index===0 || task.text.startsWith('[If time] ')!==reviewTasks[index-1].text.startsWith('[If time] ');
+        row.querySelector('.plan-category-title').hidden=!startsGroup;
+        row.querySelector('hr').hidden=index===0 || !startsGroup;
       });
     };
     const move=(task,index)=>{
@@ -151,7 +153,7 @@ function showEditor(text, preferGuided=true) {
       const row=document.createElement('div');row.className='evening-task';rows.set(task,row);list.append(row);
       const divider=document.createElement('hr');divider.className='plan-group-divider';row.append(divider);
       const toolbar=document.createElement('div');toolbar.className='task-order';row.append(toolbar);
-      const groupTitle=document.createElement('small');groupTitle.textContent=task.text.startsWith('[If time] ')?'If I have time':'Good-day plans';toolbar.append(groupTitle);
+      const groupTitle=document.createElement('h4');groupTitle.className='plan-category-title';groupTitle.textContent=task.text.startsWith('[If time] ')?'If I have time':'Good-day plans';row.insertBefore(groupTitle,toolbar);
       const handle=document.createElement('button');handle.type='button';handle.textContent='⠿';handle.draggable=true;handle.className='task-drag';handle.setAttribute('aria-label','Drag to reorder task');toolbar.append(handle);
       for(const [symbol,delta,name] of [['↑',-1,'up'],['↓',1,'down']]){
         const button=document.createElement('button');button.type='button';button.textContent=symbol;button.setAttribute('aria-label','Move task '+name);
