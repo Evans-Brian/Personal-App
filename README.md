@@ -130,3 +130,5 @@ Evening tasks can be reordered using the dotted drag handle or the up/down arrow
 Each evening task has a **Submit** button. Check the task and submit to save the current evening entry and animate the task off the board. Submitted tasks remain checked in the daily Markdown and in Completed tasks; a metadata flag keeps them hidden on reload. Save errors leave the task visible. Reduced-motion preferences skip the animation.
 
 Evening **Do later** offers tomorrow, one week, a custom day count, or a calendar date. Save cooldown saves the evening entry. The task stays visible with its return date, and appears in morning carry-forward when due, even across gaps in journaling. Clear cooldown cancels it. Completion now uses a pop, confetti burst, and smooth collapse; reduced-motion settings skip the effects.
+
+After saving an evening cooldown, **Submit** puts the unchecked task away from that evening board. It remains unfinished and returns to morning carry-forward on its scheduled date; submitting a cooldown does not add a completion record.

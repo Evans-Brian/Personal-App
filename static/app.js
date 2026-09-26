@@ -138,7 +138,7 @@ function showEditor(text, preferGuided=true) {
       let previousVisible=null;
       reviewTasks.forEach((task,index)=>{
         const row=rows.get(task);list.append(row);
-        row.hidden=Boolean(task.submitted && row.querySelector('input[type=checkbox]').checked);
+        row.hidden=Boolean(task.submitted && (row.querySelector('input[type=checkbox]').checked || task.cooldown>entry.date));
         row.querySelector('input[type="checkbox"]').id=`plan-done-${index}`;
         const startsGroup=!previousVisible || task.text.startsWith('[If time] ')!==previousVisible.text.startsWith('[If time] ');
         row.querySelector('.plan-category-title').hidden=!startsGroup;
@@ -184,18 +184,19 @@ function showEditor(text, preferGuided=true) {
       const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id=`plan-done-${i}`;checkbox.checked=task.done;checkbox.addEventListener('change',changed);
       const span=document.createElement('span');span.textContent=(task.followup?'Follow-up: ':'')+task.text.replace(/^\[If time\] /,'')+(task.earlier?' (from an earlier version of your morning plans)':'');label.append(checkbox,span);
       const taskLine=document.createElement('div');taskLine.className='task-submit-line';taskLine.append(label);row.append(taskLine);
-      const submit=document.createElement('button');submit.type='button';submit.textContent='Submit';submit.title='Save this evening entry and clear this completed task';taskLine.append(submit);
+      const submit=document.createElement('button');submit.type='button';submit.textContent='Submit';submit.title='Save this evening entry and clear a completed task or a task on cooldown';taskLine.append(submit);
       submit.addEventListener('click',async()=>{
         if(busy)return;
-        if(!checkbox.checked){status('Check the task first, then submit it.',true);checkbox.focus();return;}
-        const previous=task.submitted;task.submitted=true;controls(true);status('Saving completion…');
+        const deferred=!checkbox.checked && task.cooldown>entry.date;
+        if(!checkbox.checked && !deferred){status('Check the task as done or set a cooldown before submitting.',true);return;}
+        const previous=task.submitted;task.submitted=true;controls(true);status(deferred?'Saving cooldown…':'Saving completion…');
         try{
           const saved=await request('/api/entry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:entry.date,period,content:content(),revision:entry.revision})});
           try{clearDrafts();}catch{}
           entry=saved;draftBase=saved.sections[period];dirty=false;draftStored=false;el('journal-conflict')?.remove();
-          submit.textContent='✓ Done';
+          submit.textContent=deferred?'✓ Scheduled':'✓ Done';
           await celebrateTask(row,submit);
-          refreshOrder();status(saved.warning || 'Completed! Evening entry saved. Find this task in Completed tasks.',Boolean(saved.warning));loadHistory();
+          refreshOrder();status(saved.warning || (deferred?'Task put away until '+task.cooldown+'. It is still unfinished.':'Completed! Evening entry saved. Find this task in Completed tasks.'),Boolean(saved.warning));loadHistory();
         }catch(error){
           task.submitted=previous;
           if(error.status===409){try{showConflict(await request(`/api/entry?date=${encodeURIComponent(entry.date)}`));}catch(refreshError){status(refreshError.message,true);}}

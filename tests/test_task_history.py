@@ -134,3 +134,10 @@ class TaskHistoryTests(unittest.TestCase):
         self.save('2026-09-24','morning',self.morning('Read',{'2026-09-15:Read':'Added to good-day plans'}))
         self.save('2026-09-24','evening','### Morning plans — evening check-in\n\n- [x] Read\n')
         self.assertNotIn('Read',self.j.carryover('2026-09-25')['items'])
+
+    def test_submitted_cooldown_is_not_completed(self):
+        meta=quote(json.dumps({'original':'Read','cooldown':'2026-09-22','submitted':True}))
+        self.save('2026-09-15','evening','### Morning plans — evening check-in\n\n- [ ] Read <!-- task-meta: '+meta+' -->\n')
+        self.assertEqual(self.j.task_history(),[])
+        self.assertNotIn('Read',self.j.carryover('2026-09-21')['items'])
+        self.assertIn('Read',self.j.carryover('2026-09-22')['items'])
