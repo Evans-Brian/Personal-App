@@ -46,13 +46,14 @@
     return {body:end<0?'':normalized.slice(end+1),tasks:lines.map(s=>{let text=s.slice(6),meta={};const match=text.match(/ <!-- task-meta: (.*?) -->$/);if(match){try{meta=JSON.parse(decodeURIComponent(match[1]));text=text.slice(0,match.index);}catch{}}return {...meta,text,done:s[3].toLowerCase()==='x'};}),ratings};
   }
   function reconcile(plans,previous){
-    const remaining=previous.map(t=>({...t}));
-    const tasks=(plans || []).map(text=>{
-      const index=remaining.findIndex(t=>!t.followup && (t.original || t.text)===text);
-      return index<0?{text,done:false}:remaining.splice(index,1)[0];
+    const remaining=[...(plans || [])];
+    // The saved checklist is the user's order; append only new morning items.
+    const tasks=previous.map(task=>{
+      const index=task.followup?-1:remaining.indexOf(task.original || task.text);
+      if(index>=0)remaining.splice(index,1);
+      return {...task,earlier:index<0 && !task.followup && !task.eveningAdded};
     });
-    // Keep old check-in items if morning text later changes, rather than lose history.
-    return tasks.concat(remaining.map(t=>({...t,earlier:!t.followup && !t.eveningAdded})));
+    return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
   const api={jo,serializeJO,items,morning,split,reconcile,serialize,optional,optionalTitle,review,upgrade};

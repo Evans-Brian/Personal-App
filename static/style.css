@@ -25,3 +25,5 @@
 
 
 .optional-plan-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.optional-plan-row .plan-input{flex:1;min-width:180px;width:auto}.do-later-label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px}.do-later-label input{width:18px;height:18px;margin:0}.do-later-date{width:auto;max-width:170px}.do-later-date[hidden]{display:none}
+
+.task-order{display:flex;align-items:center;gap:6px}.task-order small{margin-right:auto}.task-order button{padding:4px 10px;font-size:16px}.task-drag{cursor:grab}.task-drag:active{cursor:grabbing}.evening-task.drop-before{box-shadow:0 -2px currentColor}.evening-task.drop-after{box-shadow:0 2px currentColor}
