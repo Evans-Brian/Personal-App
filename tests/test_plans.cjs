@@ -48,3 +48,7 @@ assert.equal(restored[0].eveningAdded,true);
 assert.equal(restored[3].done,true);
 assert.equal(restored[4].done,false);
 assert.deepEqual(p.reconcile(['Build app','[If time] Bonus','New morning task'],p.split(p.serialize(restored)).tasks).map(t=>t.text),restored.map(t=>t.text));
+
+const submitted={text:"Finished",original:"Finished",done:true,submitted:true};
+assert.deepEqual(p.split(p.serialize([submitted])).tasks,[submitted]);
+assert.equal(p.reconcile(["Finished"],p.split(p.serialize([submitted])).tasks)[0].submitted,true);

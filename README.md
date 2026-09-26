@@ -126,3 +126,5 @@ Run `powershell -ExecutionPolicy Bypass -File .\install-background-task.ps1` onc
 The server stays local to this PC. It cannot serve requests while the PC is asleep, powered off, or signed out. GitHub stores source code; it does not host the running app. To stop background recovery, disable the **Personal Journal** task in Windows Task Scheduler. Logs are in `data/startup.log` and are never committed.
 
 Evening tasks can be reordered using the dotted drag handle or the up/down arrows beside each task. Save the evening entry to keep the order; drafts also retain it. Moving a task preserves its category, completion checkbox, description, and follow-up relationship. New morning tasks are appended without resetting the saved evening order.
+
+Each evening task has a **Submit** button. Check the task and submit to save the current evening entry and animate the task off the board. Submitted tasks remain checked in the daily Markdown and in Completed tasks; a metadata flag keeps them hidden on reload. Save errors leave the task visible. Reduced-motion preferences skip the animation.
