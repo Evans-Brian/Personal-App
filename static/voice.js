@@ -2,28 +2,27 @@
   const supported=!!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   const dialog=document.createElement('section');dialog.className='voice-inline';dialog.hidden=true;dialog.setAttribute('aria-label','Voice dictation');
   const info=document.createElement('p');info.setAttribute('role','status');
-  const review=document.createElement('textarea');review.setAttribute('aria-label','Review transcription');review.rows=3;review.hidden=true;
+  const review=document.createElement('textarea');review.setAttribute('aria-label','Transcript to copy');review.rows=3;review.hidden=true;
   const stop=document.createElement('button');stop.type='button';stop.textContent='Stop recording';
-  const insert=document.createElement('button');insert.type='button';insert.textContent='Add to text';insert.hidden=true;
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
   const privacy=document.createElement('p');privacy.className='small';privacy.textContent='Transcribed on your PC. Audio is not saved. Up to 2 minutes.';
-  dialog.append(info,review,stop,insert,cancel,privacy);document.body.append(dialog);
+  dialog.append(info,review,stop,cancel,privacy);document.body.append(dialog);
   let active=null,stream=null,recorder=null,timer=null,controller=null,session=0;
   function release(){clearTimeout(timer);stream?.getTracks().forEach(track=>track.stop());stream=null;}
   function close(){session++;if(recorder?.state==='recording')recorder.stop();release();controller?.abort();dialog.hidden=true;document.body.append(dialog);active=null;}
   cancel.onclick=close;dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
   stop.onclick=()=>{if(recorder?.state==='recording')recorder.stop();};
-  insert.onclick=()=>{
-    if(!active?.isConnected || active.disabled || active.readOnly){info.textContent='The field has changed. Copy your transcript before closing.';return;}
-    const text=review.value.trim();if(!text)return;
+  function appendTranscript(text){
+    if(!active?.isConnected || active.disabled || active.readOnly){review.value=text;review.hidden=false;info.textContent='The field has changed. Copy your transcript before closing.';return;}
+    text=text.trim();if(!text)return;
     const addition=(active.value && !/\s$/.test(active.value)?' ':'')+text;
-    if(active.maxLength>=0 && active.value.length+addition.length>active.maxLength){info.textContent='This text exceeds the field limit. Shorten it or copy it to a longer note.';return;}
+    if(active.maxLength>=0 && active.value.length+addition.length>active.maxLength){review.value=text;review.hidden=false;info.textContent='This transcript exceeds the field limit. Copy it into a longer note.';return;}
     active.value+=addition;active.dispatchEvent(new Event('input',{bubbles:true}));active.dispatchEvent(new Event('change',{bubbles:true}));
     const target=active;close();target.focus();
   };
   async function record(field){
     if(!dialog.hidden){dialog.scrollIntoView({block:'nearest'});return;}
-    active=field;const token=++session;review.hidden=true;review.value='';insert.hidden=true;stop.hidden=false;stop.disabled=true;
+    active=field;const token=++session;review.hidden=true;review.value='';stop.hidden=false;stop.disabled=true;
     info.textContent='Allow microphone access to start recording.';
     const anchor=field.closest('label, .optional-plan-row') || field.nextElementSibling || field;
     anchor.insertAdjacentElement('afterend',dialog);dialog.hidden=false;
@@ -43,7 +42,8 @@
           const response=await fetch('/api/transcribe',{method:'POST',headers:{'Content-Type':mime},body:new Blob(chunks,{type:mime}),signal:controller.signal});
           const result=await response.json();if(!response.ok)throw Error(result.error || 'Transcription failed.');
           if(token!==session)return;
-          review.value=result.text;review.hidden=false;insert.hidden=!result.text;info.textContent=result.text?'Review the text, then add it to your note.':'No speech detected. Cancel and try again.';
+          if(result.text?.trim())appendTranscript(result.text);
+          else info.textContent='No speech detected. Cancel and try again.';
         }catch(error){if(token===session)info.textContent=error.name==='AbortError'?'Transcription timed out. Cancel and try a shorter recording.':error.message;}
         finally{clearTimeout(timeout);}
       };
