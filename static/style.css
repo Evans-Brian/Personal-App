@@ -31,3 +31,5 @@
 .plan-category-title{margin:16px 0 8px;font-size:16px}.task-order{justify-content:flex-end}
 
 .task-submit-line{display:flex;align-items:center;gap:16px}.task-submit-line .plan-check{flex:1;min-width:0}.task-submit-line>button{flex-shrink:0}.evening-task[hidden]{display:none}
+
+.completion-burst{position:fixed;inset:0;pointer-events:none;z-index:9999}.completion-burst i{position:absolute;width:8px;height:8px}.task-cooldown{margin:4px 0 14px 32px;font-size:13px}.task-cooldown summary{cursor:pointer}.task-cooldown input,.task-cooldown button{margin:8px 6px 0 0;padding:8px}.task-cooldown input[type=number]{width:75px}.on-cooldown .task-cooldown summary{color:#80714b}

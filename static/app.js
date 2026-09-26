@@ -194,9 +194,7 @@ function showEditor(text, preferGuided=true) {
           try{clearDrafts();}catch{}
           entry=saved;draftBase=saved.sections[period];dirty=false;draftStored=false;el('journal-conflict')?.remove();
           submit.textContent='✓ Done';
-          if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-            try{await row.animate([{opacity:1,transform:'translateX(0)',backgroundColor:'transparent'},{offset:.3,opacity:1,transform:'scale(1.015)',backgroundColor:'#dcebdd'},{opacity:0,transform:'translateX(35px) scale(.97)'}],{duration:450,easing:'ease-in-out'}).finished;}catch{}
-          }
+          await celebrateTask(row,submit);
           refreshOrder();status(saved.warning || 'Completed! Evening entry saved. Find this task in Completed tasks.',Boolean(saved.warning));loadHistory();
         }catch(error){
           task.submitted=previous;
@@ -204,6 +202,30 @@ function showEditor(text, preferGuided=true) {
           else status(error.message,true);
         }finally{controls(false);}
       });
+      const cooldown=document.createElement('details');cooldown.className='task-cooldown';
+      const cooldownTitle=document.createElement('summary');cooldownTitle.textContent=task.cooldown?'On cooldown until '+task.cooldown:'Do later';cooldown.append(cooldownTitle);row.append(cooldown);
+      const dateInput=document.createElement('input');dateInput.type='date';dateInput.setAttribute('aria-label','Bring task back on');
+      const tomorrow=new Date(entry.date+'T12:00:00Z');tomorrow.setUTCDate(tomorrow.getUTCDate()+1);dateInput.min=tomorrow.toISOString().slice(0,10);dateInput.value=task.cooldown || dateInput.min;
+      const days=document.createElement('input');days.type='number';days.min='1';days.max='3650';days.value='1';days.setAttribute('aria-label','Days to skip');
+      const setDays=count=>{const date=new Date(entry.date+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+count);dateInput.value=date.toISOString().slice(0,10);};
+      for(const [label,count] of [['Tomorrow',1],['In a week',7]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.addEventListener('click',()=>setDays(count));cooldown.append(button);}
+      days.addEventListener('input',()=>{if(days.validity.valid && days.value)setDays(Number(days.value));});cooldown.append(days,dateInput);
+      const apply=document.createElement('button');apply.type='button';apply.textContent='Save cooldown';cooldown.append(apply);
+      const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Clear cooldown';cooldown.append(cancel);
+      const saveCooldown=async value=>{
+        if(busy)return;
+        if(value && (!dateInput.validity.valid || value<=entry.date)){status('Choose a date after this journal day.',true);return;}
+        if(checkbox.checked && value){status('Uncheck this task before putting it on cooldown.',true);return;}
+        const previous=task.cooldown;task.cooldown=value;controls(true);
+        try{
+          const saved=await request('/api/entry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:entry.date,period,content:content(),revision:entry.revision})});
+          try{clearDrafts();}catch{}entry=saved;draftBase=saved.sections[period];dirty=false;draftStored=false;
+          cooldownTitle.textContent=value?'On cooldown until '+value:'Do later';cooldown.open=false;
+          row.classList.toggle('on-cooldown',Boolean(value));status(saved.warning || (value?'Evening saved. This task will return to morning carry-forward on '+value+'.':'Evening saved. Cooldown cleared.'),Boolean(saved.warning));loadHistory();
+        }catch(error){task.cooldown=previous;if(error.status===409){try{showConflict(await request(`/api/entry?date=${encodeURIComponent(entry.date)}`));}catch(refreshError){status(refreshError.message,true);}}else status(error.message,true);}
+        finally{controls(false);}
+      };
+      apply.addEventListener('click',()=>saveCooldown(dateInput.value));cancel.addEventListener('click',()=>saveCooldown(null));row.classList.toggle('on-cooldown',Boolean(task.cooldown));
       const tools=document.createElement('details');tools.className='task-edit';
       const summary=document.createElement('summary');summary.textContent=task.followup?'Edit follow-up':'Edit task / add follow-up';tools.append(summary);
       const editLabel=document.createElement('label');editLabel.textContent='Evening description';
@@ -570,4 +592,20 @@ async function loadTaskHistory(){
       row.append(name,document.createElement('br'),dates);panel.append(row);
     }
   }catch(error){el('task-history').textContent=error.message;}
+}
+
+async function celebrateTask(row,button){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const bounds=button.getBoundingClientRect(),burst=document.createElement('div');burst.className='completion-burst';burst.setAttribute('aria-hidden','true');document.body.append(burst);
+  const animations=[];
+  try{
+    for(let i=0;i<18;i++){
+      const bit=document.createElement('i');burst.append(bit);const angle=i*Math.PI*2/18,distance=45+Math.random()*55;
+      bit.style.cssText=`left:${bounds.left+bounds.width/2}px;top:${bounds.top+bounds.height/2}px;background:${['#55b88a','#e5b95c','#87c9df','#a698d5'][i%4]};border-radius:${i%2?'50%':'2px'}`;
+      animations.push(bit.animate([{opacity:0,transform:'scale(0)'},{offset:.15,opacity:1,transform:'scale(1.2)'},{opacity:0,transform:`translate(${Math.cos(angle)*distance}px,${Math.sin(angle)*distance+25}px) rotate(${i*55}deg) scale(.4)`}],{duration:700,easing:'cubic-bezier(.15,.7,.3,1)'}));
+    }
+    animations.push(button.animate([{transform:'scale(1)'},{transform:'scale(1.22)',offset:.35},{transform:'scale(1)'}],{duration:380,easing:'ease-out'}));
+    await row.animate([{transform:'scale(1)',opacity:1},{offset:.28,transform:'scale(1.018)',backgroundColor:'#dcebdd',opacity:1},{offset:.55,transform:'scale(.99)',opacity:1},{transform:'scale(.92) translateY(-8px)',opacity:0}],{duration:650,easing:'ease-in-out'}).finished;
+    await row.animate([{height:row.offsetHeight+'px',opacity:0,overflow:'hidden'},{height:'0px',opacity:0,overflow:'hidden'}],{duration:180,easing:'ease-out'}).finished;
+  }catch{}finally{animations.forEach(animation=>animation.cancel());burst.remove();}
 }

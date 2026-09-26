@@ -52,3 +52,5 @@ assert.deepEqual(p.reconcile(['Build app','[If time] Bonus','New morning task'],
 const submitted={text:"Finished",original:"Finished",done:true,submitted:true};
 assert.deepEqual(p.split(p.serialize([submitted])).tasks,[submitted]);
 assert.equal(p.reconcile(["Finished"],p.split(p.serialize([submitted])).tasks)[0].submitted,true);
+
+assert.equal(p.split(p.serialize([{text:"Later",done:false,cooldown:"2026-10-01"}])).tasks[0].cooldown,"2026-10-01");

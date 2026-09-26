@@ -128,3 +128,5 @@ The server stays local to this PC. It cannot serve requests while the PC is asle
 Evening tasks can be reordered using the dotted drag handle or the up/down arrows beside each task. Save the evening entry to keep the order; drafts also retain it. Moving a task preserves its category, completion checkbox, description, and follow-up relationship. New morning tasks are appended without resetting the saved evening order.
 
 Each evening task has a **Submit** button. Check the task and submit to save the current evening entry and animate the task off the board. Submitted tasks remain checked in the daily Markdown and in Completed tasks; a metadata flag keeps them hidden on reload. Save errors leave the task visible. Reduced-motion preferences skip the animation.
+
+Evening **Do later** offers tomorrow, one week, a custom day count, or a calendar date. Save cooldown saves the evening entry. The task stays visible with its return date, and appears in morning carry-forward when due, even across gaps in journaling. Clear cooldown cancels it. Completion now uses a pop, confetti burst, and smooth collapse; reduced-motion settings skip the effects.

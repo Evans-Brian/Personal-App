@@ -28,7 +28,12 @@ class Journal:
         for path in sorted((self.vault / 'Journal').glob('????-??-??.md')):
             if path.stem >= day:
                 continue
-            morning = self.read(path.stem)['sections']['morning']
+            sections = self.read(path.stem)['sections']
+            for task in evening_tasks(sections['evening']):
+                if task.get('cooldown'):
+                    action = 'Completed' if task['done'] else 'Skipped until ' + str(task['cooldown'])
+                    decisions[path.stem + ':' + task['text']] = (path.stem, action)
+            morning = sections['morning']
             match = re.match(r'<!-- carry-review: (.*?) -->', morning)
             if not match:
                 continue
