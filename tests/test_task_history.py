@@ -22,21 +22,21 @@ class TaskHistoryTests(unittest.TestCase):
         self.save('2026-09-15','morning',self.morning('Read'))
         self.save('2026-09-16','morning',self.morning('Read',{'2026-09-15:Read':'Added to if-time'},True))
         self.save('2026-09-17','morning',self.morning('Read',{'2026-09-16:[If time] Read':'Added to good-day plans'}))
-        self.save('2026-09-17','evening','### Morning plans â€” evening check-in\n\n- [x] Read\n')
+        self.save('2026-09-17','evening','### Morning plans — evening check-in\n\n- [x] Read\n')
         rows=self.j.task_history()
         self.assertEqual(len(rows),1)
         self.assertEqual((rows[0]['created'],rows[0]['completed']),('2026-09-15','2026-09-17'))
         self.save('2026-09-18','morning',self.morning('Read'))
-        self.save('2026-09-18','evening','### Morning plans â€” evening check-in\n\n- [x] Read\n')
+        self.save('2026-09-18','evening','### Morning plans — evening check-in\n\n- [x] Read\n')
         self.assertEqual(len(self.j.task_history()),2)
         self.assertEqual(self.j.task_history()[0]['created'],'2026-09-18')
         self.assertTrue((self.j.vault/'Tasks'/'Completed tasks.md').exists())
-        self.save('2026-09-18','evening','### Morning plans â€” evening check-in\n\n- [ ] Read\n')
+        self.save('2026-09-18','evening','### Morning plans — evening check-in\n\n- [ ] Read\n')
         self.assertEqual(len(self.j.task_history()),2)  # historical completion retained
 
     def test_already_done_does_not_rewrite_previous_night_or_reappear(self):
         self.save('2026-09-15','morning',self.morning('Read'))
-        old=self.save('2026-09-15','evening','### Morning plans â€” evening check-in\n\n- [ ] Read\n')
+        old=self.save('2026-09-15','evening','### Morning plans — evening check-in\n\n- [ ] Read\n')
         self.save('2026-09-16','morning','<!-- carry-review: '+quote(json.dumps({'2026-09-15:Read':'Completed'}))+' -->\n')
         self.assertEqual(self.j.read('2026-09-15')['revision'],old['revision'])
         self.assertEqual(self.j.carryover('2026-09-17')['items'],[])
@@ -56,7 +56,7 @@ class TaskHistoryTests(unittest.TestCase):
         tasks = [f'Extra {n}' for n in range(7)]
         self.save('2026-09-15', 'morning', '### What would be great to do today, if I have time?\n\n'+ '\n'.join('- '+t for t in tasks))
         self.assertEqual(len(self.j.carryover('2026-09-16')['items']), 7)
-        self.save('2026-09-15', 'evening', '### Morning plans â€” evening check-in\n\n- [x] [If time] Extra 6\n')
+        self.save('2026-09-15', 'evening', '### Morning plans — evening check-in\n\n- [x] [If time] Extra 6\n')
         self.assertEqual(len(self.j.carryover('2026-09-16')['items']), 6)
         self.assertEqual(self.j.task_history()[0]['text'], 'Extra 6')
 
@@ -64,7 +64,7 @@ class TaskHistoryTests(unittest.TestCase):
         self.save('2026-09-15','morning',self.morning('Build app'))
         meta=quote(json.dumps({'original':'Build app'}))
         follow=quote(json.dumps({'original':'Finish tests','followup':'test-id','parent':'Build app'}))
-        evening='### Morning plans â€” evening check-in\n\n- [x] Built screen <!-- task-meta: '+meta+' -->\n- [ ] Finish tests <!-- task-meta: '+follow+' -->\n'
+        evening='### Morning plans — evening check-in\n\n- [x] Built screen <!-- task-meta: '+meta+' -->\n- [ ] Finish tests <!-- task-meta: '+follow+' -->\n'
         self.save('2026-09-15','evening',evening)
         self.assertEqual(self.j.carryover('2026-09-16')['items'],['Finish tests'])
         done=self.j.task_history()[0]
@@ -72,7 +72,7 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertEqual(done['original_text'],'Build app')
         self.assertIn('Build app',self.j.read('2026-09-15')['sections']['morning'])
         self.save('2026-09-16','morning',self.morning('Finish tests',{'2026-09-15:Finish tests':'Added to good-day plans'}))
-        self.save('2026-09-16','evening','### Morning plans â€” evening check-in\n\n- [x] Finish tests\n')
+        self.save('2026-09-16','evening','### Morning plans — evening check-in\n\n- [x] Finish tests\n')
         task=next(r for r in self.j.task_history() if r['text']=='Finish tests')
         self.assertEqual(task['created'],'2026-09-15')
         self.assertEqual(task['followup_to'],'Build app')
@@ -87,7 +87,7 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertIn('Read',self.j.carryover('2026-09-26')['items'])
         self.save('2026-09-26','morning',self.morning('Read',{key:'Added to good-day plans'}))
         self.assertEqual(self.j.carryover('2026-09-27')['items'].count('Read'),1)
-        self.save('2026-09-26','evening','### Morning plans â€” evening check-in\n\n- [x] Read\n')
+        self.save('2026-09-26','evening','### Morning plans — evening check-in\n\n- [x] Read\n')
         self.assertNotIn('Read',self.j.carryover('2026-09-27')['items'])
 
     def test_snooze_completed_and_custom_days(self):
@@ -102,7 +102,7 @@ class TaskHistoryTests(unittest.TestCase):
         tasks=[f'Plan {i}' for i in range(7)]
         self.save('2026-09-15','morning',self.morning('\n- '.join(tasks)))
         self.assertEqual(self.j.carryover('2026-09-16')['items'],tasks)
-        self.save('2026-09-15','evening','### Morning plans â€” evening check-in\n\n- [x] Plan 6\n')
+        self.save('2026-09-15','evening','### Morning plans — evening check-in\n\n- [x] Plan 6\n')
         self.assertEqual(self.j.task_history()[0]['text'],'Plan 6')
         self.assertEqual(len(self.j.carryover('2026-09-16')['items']),6)
     def test_optional_do_later_date_survives_other_days(self):
@@ -116,7 +116,7 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertEqual(next(i for i in due['entries'] if i['text']=='[If time] Buy weights')['key'],key)
         self.assertIn('[If time] Buy weights',self.j.carryover('2026-09-22')['items'])
     def test_evening_only_tasks_carry_and_record_completion(self):
-        body='### Morning plans â€” evening check-in\n\n- [ ] New evening plan\n- [x] [If time] Finished errand\n'
+        body='### Morning plans — evening check-in\n\n- [ ] New evening plan\n- [x] [If time] Finished errand\n'
         self.save('2026-09-15','evening',body)
         self.assertEqual(self.j.carryover('2026-09-16')['items'],['New evening plan'])
         completed=self.j.task_history()[0]

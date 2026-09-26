@@ -31,7 +31,7 @@ def evening_tasks(text):
             try:
                 decoded = json.loads(unquote(match[1]))
                 if isinstance(decoded, dict):
-                    meta = {k: v for k, v in decoded.items() if k in ('original', 'followup', 'parent') and isinstance(v, str)}
+                    meta = {k: v for k, v in decoded.items() if k in ('original', 'followup', 'parent', 'cooldown') and isinstance(v, str)}
                     description = description[:match.start()]
             except (ValueError, TypeError):
                 pass
