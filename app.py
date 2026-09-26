@@ -112,6 +112,7 @@ def make_server(vault, database, port=8765, remote=None):
                                   query.get('code', [''])[0], query.get('error', [None])[0])
                     return self.respond(303, b'', headers={'Location': f'http://127.0.0.1:{self.server.server_port}/', 'Set-Cookie': 'oura_state=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/api/oura/callback'})
                 assets = {"/people.js": ("people.js", "text/javascript"), "/restaurants.js": ("restaurants.js", "text/javascript"), "/plans.js": ("plans.js", "text/javascript"), "/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
+                assets["/voice.js"] = ("voice.js", "text/javascript")
                 assets.update({f"/icon-{size}.png": (f"icon-{size}.png", "image/png") for size in (180,192,512)})
                 assets["/manifest.webmanifest"] = ("manifest.webmanifest", "application/manifest+json")
                 if url.path in assets:
@@ -122,6 +123,22 @@ def make_server(vault, database, port=8765, remote=None):
                 self.respond(400, {"error": str(exc)})
 
         def do_POST(self):
+            if self.path == '/api/transcribe':
+                if not self.allowed() or self.headers.get('Origin') is None:
+                    return self.respond(403, {'error': 'Only requests from this app are accepted.'})
+                from voice import transcribe, MAX_BYTES
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= MAX_BYTES:
+                        return self.respond(413, {'error': 'Recording is empty or too large. Keep it under two minutes.'})
+                    if self.headers.get('Content-Type', '').split(';')[0] not in ('audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'):
+                        return self.respond(415, {'error': 'Unsupported audio format.'})
+                    self.connection.settimeout(180)
+                    return self.respond(200, {'text': transcribe(self.rfile.read(length))})
+                except ValueError as exc:
+                    return self.respond(400, {'error': str(exc)})
+                except Exception:
+                    return self.respond(503, {'error': 'Local transcription could not finish. Try recording again.'})
             if not self.allowed() or self.headers.get("Content-Type") != "application/json":
                 return self.respond(403, {"error": "Only same-origin JSON requests are accepted."})
             if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect'):
