@@ -128,7 +128,7 @@ function showEditor(text, preferGuided=true) {
     const deferred=JournalPlans.review(entry.sections.morning).choices;
     reviewTasks=JournalPlans.reconcile(JournalPlans.morning(entry.sections.morning),JournalPlans.split(text).tasks).filter(task=>{
       const decision=deferred[entry.date+':'+(task.original || task.text)];
-      return task.done || !(typeof decision==='string' && decision.startsWith('Skipped until ') && decision.slice(14)>entry.date);
+      return decision!=='Deleted' && (task.done || !(typeof decision==='string' && decision.startsWith('Skipped until ') && decision.slice(14)>entry.date));
     });
     const title=document.createElement('h3');title.textContent='How did your plans go?';el('plan-review').append(title);
     const hint=document.createElement('p');hint.className='small';hint.textContent=reviewTasks.length?'Drag the handles or use the arrows to reorder. Check a task and Submit to clear it and save your evening entry.':'No tasks yet. Add an evening task below.';el('plan-review').append(hint);
@@ -138,7 +138,7 @@ function showEditor(text, preferGuided=true) {
       let previousVisible=null;
       reviewTasks.forEach((task,index)=>{
         const row=rows.get(task);list.append(row);
-        row.hidden=Boolean(task.submitted && (row.querySelector('input[type=checkbox]').checked || task.cooldown>entry.date));
+        row.hidden=Boolean(task.deleted || task.submitted && (row.querySelector('input[type=checkbox]').checked || task.cooldown>entry.date));
         row.querySelector('input[type="checkbox"]').id=`plan-done-${index}`;
         const startsGroup=!previousVisible || task.text.startsWith('[If time] ')!==previousVisible.text.startsWith('[If time] ');
         row.querySelector('.plan-category-title').hidden=!startsGroup;
@@ -156,6 +156,8 @@ function showEditor(text, preferGuided=true) {
       const row=document.createElement('div');row.className='evening-task';rows.set(task,row);list.append(row);
       const divider=document.createElement('hr');divider.className='plan-group-divider';row.append(divider);
       const toolbar=document.createElement('div');toolbar.className='task-order';row.append(toolbar);
+      const remove=document.createElement('button');remove.type='button';remove.className='task-delete';remove.textContent='×';remove.setAttribute('aria-label','Delete task');
+      remove.addEventListener('click',()=>{if(busy || !confirm('Delete this task? It will no longer carry forward. Save your evening entry to keep this change.'))return;task.deleted=true;refreshOrder();changed();});row.append(remove);
       const groupTitle=document.createElement('h4');groupTitle.className='plan-category-title';groupTitle.textContent=task.text.startsWith('[If time] ')?'If I have time':'Good-day plans';row.insertBefore(groupTitle,toolbar);
       const handle=document.createElement('button');handle.type='button';handle.textContent='⠿';handle.draggable=true;handle.className='task-drag';handle.setAttribute('aria-label','Drag to reorder task');toolbar.append(handle);
       for(const [symbol,delta,name] of [['↑',-1,'up'],['↓',1,'down']]){
@@ -309,7 +311,7 @@ function showEditor(text, preferGuided=true) {
       if(i===2)hint.textContent='Optional extras, if there is room in your day. Add as many as you need.';
       group.append(label,hint);const plans=JournalPlans.items(part.answer);
       for(let n=0;n<(i===2?Math.max(1,plans.length):Math.max(4,plans.length));n++){
-        const field=document.createElement('input');field.type='text';field.id=`${fieldPrefix}-${n}`;field.value=plans[n] || '';field.placeholder=`Entry ${n+1}`;field.setAttribute('aria-label',`${i===2?'If time':'Good day'} entry ${n+1}`);field.setAttribute('aria-describedby',hint.id);field.className='plan-input';field.hidden=i===2 && n>=Math.max(1,plans.length);field.addEventListener('input',changed);group.append(i===2?optionalPlanRow(field):field);
+        const field=document.createElement('input');field.type='text';field.id=`${fieldPrefix}-${n}`;field.value=plans[n] || '';field.placeholder=`Entry ${n+1}`;field.setAttribute('aria-label',`${i===2?'If time':'Good day'} entry ${n+1}`);field.setAttribute('aria-describedby',hint.id);field.className='plan-input';field.hidden=i===2 && n>=Math.max(1,plans.length);field.addEventListener('input',changed);group.append(i===2?optionalPlanRow(field):morningTaskRow(field));
       }
       {
         const add=document.createElement('button');add.id='add-'+fieldPrefix;add.type='button';add.textContent='+ Add item';
@@ -341,8 +343,18 @@ function showEditor(text, preferGuided=true) {
   el('mode').disabled=busy || !entry || (!guided && !parts.length);
   el('mode-hint').textContent=guided?'All prompts are optional.':parts.length?'Your headings and answers stay in the same note.':'This custom note stays in the Markdown editor to preserve its structure.';
 }
+function morningTaskRow(field,optional=false){
+  const row=document.createElement('div');row.className='morning-task';row.append(field);
+  const remove=document.createElement('button');remove.type='button';remove.className='task-delete';remove.textContent='×';remove.setAttribute('aria-label','Delete task');
+  remove.addEventListener('click',()=>{
+    if(busy || !confirm('Delete this task? It will no longer carry forward. Save your morning entry to keep this change.'))return;
+    const text=(optional?'[If time] ':'')+field.value.trim();
+    if(field.value.trim())carryChoices[entry.date+':'+text]='Deleted';
+    row.remove();changed();
+  });row.append(remove);return row;
+}
 function optionalPlanRow(field){
-  const row=document.createElement('div');row.className='optional-plan-row';row.append(field);
+  const row=morningTaskRow(field,true);row.classList.add('optional-plan-row');
   const label=document.createElement('label');label.className='do-later-label';
   const check=document.createElement('input');check.type='checkbox';check.className='do-later-check';label.append(check,document.createTextNode('Do Later'));
   const calendar=document.createElement('input');calendar.type='date';calendar.className='do-later-date';calendar.setAttribute('aria-label','Return date for '+(field.value || 'optional item'));
@@ -358,11 +370,11 @@ function optionalPlanRow(field){
   row.append(label,calendar);return row;
 }
 function revealPlan(prefix,focus=false){
-  const n=document.querySelectorAll(`[id^="${prefix}-"].plan-input`).length;
+  const n=Math.max(-1,...[...document.querySelectorAll(`[id^="${prefix}-"].plan-input`)].map(field=>Number(field.id.split("-").at(-1))))+1;
   const field=document.createElement('input');field.type='text';field.id=`${prefix}-${n}`;
   field.placeholder=`Entry ${n+1}`;field.className='plan-input';
   field.setAttribute('aria-label',`${prefix==='optional'?'If time':'Good day'} entry ${n+1}`);field.setAttribute('aria-describedby',prefix==='optional'?'answer-hint-2':'answer-hint-1');
-  field.addEventListener('input',changed);el('add-'+prefix).before(prefix==='optional'?optionalPlanRow(field):field);
+  field.addEventListener('input',changed);el('add-'+prefix).before(prefix==='optional'?optionalPlanRow(field):morningTaskRow(field));
   if(focus)field.focus();
   return field;
 }

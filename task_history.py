@@ -32,6 +32,7 @@ def evening_tasks(text):
                 decoded = json.loads(unquote(match[1]))
                 if isinstance(decoded, dict):
                     meta = {k: v for k, v in decoded.items() if k in ('original', 'followup', 'parent', 'cooldown') and isinstance(v, str)}
+                    meta['deleted'] = decoded.get('deleted') is True
                     description = description[:match.start()]
             except (ValueError, TypeError):
                 pass
@@ -82,7 +83,7 @@ def completions(journal):
             if task.get('parent'):
                 origin['followup_to'] = task['parent'].removeprefix('[If time] ')
             origins[key] = origin
-            if task['done']:
+            if task['done'] and not task.get('deleted'):
                 add_completion(completed, origin, day, 'evening')
     return completed
 

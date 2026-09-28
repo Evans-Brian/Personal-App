@@ -30,7 +30,9 @@ class Journal:
                 continue
             sections = self.read(path.stem)['sections']
             for task in evening_tasks(sections['evening']):
-                if task.get('cooldown'):
+                if task.get('deleted'):
+                    decisions[path.stem + ':' + task['text']] = (path.stem, 'Deleted')
+                elif task.get('cooldown'):
                     action = 'Completed' if task['done'] else 'Skipped until ' + str(task['cooldown'])
                     decisions[path.stem + ':' + task['text']] = (path.stem, action)
             morning = sections['morning']
@@ -48,7 +50,7 @@ class Journal:
         for item in result['items']:
             key = result['source'] + ':' + item
             action = decisions.get(key, (None, None))[1]
-            if action == 'Completed' or (isinstance(action, str) and action.startswith('Added')):
+            if action in ('Completed', 'Deleted') or (isinstance(action, str) and action.startswith('Added')):
                 continue
             entries.append({'key': key, 'text': item, 'source': result['source']})
         for key, (chosen, action) in decisions.items():
@@ -81,7 +83,7 @@ class Journal:
                 try:
                     choices = json.loads(unquote(match[1]))
                     if isinstance(choices, dict):
-                        resolved.update(key for key, action in choices.items() if action == 'Completed')
+                        resolved.update(key for key, action in choices.items() if action in ('Completed', 'Deleted'))
                 except (ValueError, TypeError):
                     pass
             plans = []
@@ -101,7 +103,7 @@ class Journal:
             if not plans:
                 continue
             checks = re.search(r'^### Morning plans — evening check-in\s*\n([\s\S]*?)(?=^### |\Z)', evening, re.M)
-            done = [task['text'] for task in tasks if task['done']]
+            done = [task['text'] for task in tasks if task['done'] or task.get('deleted')]
             remaining = []
             for item in plans:
                 if item in done:

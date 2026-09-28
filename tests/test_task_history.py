@@ -141,3 +141,10 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertEqual(self.j.task_history(),[])
         self.assertNotIn('Read',self.j.carryover('2026-09-21')['items'])
         self.assertIn('Read',self.j.carryover('2026-09-22')['items'])
+
+    def test_deleted_evening_task_does_not_return_or_complete(self):
+        self.save('2026-09-15','morning',self.morning('Read'))
+        meta=quote(json.dumps({'original':'Read','deleted':True,'cooldown':'2026-09-22'}))
+        self.save('2026-09-15','evening','### Morning plans — evening check-in\n\n- [ ] Read <!-- task-meta: '+meta+' -->\n')
+        self.assertNotIn('Read',self.j.carryover('2026-09-23')['items'])
+        self.assertEqual(self.j.task_history(),[])
