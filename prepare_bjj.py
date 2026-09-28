@@ -15,15 +15,18 @@ EXPECTED = {
     "octopus-guard-2": {"date": "2026-01-04", "messages": [395, 396, 397, 398], "references": [2351, 2652, 2337, 2502]},
     "shotgun-k-guard": {"date": "2026-08-11", "messages": [430, 431, 432, 433], "references": [4056, 3498, 3423, 2002]},
 }
+EXPECTED_MEDIA_COUNT = 12
+DURATION_TOLERANCE_SECONDS = 2.0
+
+
+def stream_codecs(streams, codec_type):
+    return sorted(stream.get("codec_name", "") for stream in streams if stream.get("codec_type") == codec_type)
 
 
 def build(root):
     root = Path(root).resolve()
     manifest_path = root / "manifest.json"
-    previous = {}
-    if manifest_path.exists():
-        previous = {item["id"]: item for item in json.loads(manifest_path.read_text(encoding="utf-8")).get("media", [])}
-    items, missing = [], []
+    items, missing, duration_mismatches, codec_mismatches = [], [], [], []
     for course in COURSES:
         source = EXPECTED[course["id"]]
         for volume in range(1, 5):
@@ -32,7 +35,13 @@ def build(root):
             if not path.is_file():
                 missing.append(media_id); continue
             duration, streams = probe(path)
-            old = previous.get(media_id, {})
+            reference = source["references"][volume - 1]
+            if abs(duration - reference) > DURATION_TOLERANCE_SECONDS:
+                duration_mismatches.append({"id": media_id, "duration": duration, "reference": reference})
+            video_codecs = stream_codecs(streams, "video")
+            audio_codecs = stream_codecs(streams, "audio")
+            if not video_codecs or not audio_codecs:
+                codec_mismatches.append({"id": media_id, "video": video_codecs, "audio": audio_codecs})
             item = {
                 "id": media_id, "course_id": course["id"], "title": course["title"], "instructor": course["instructor"],
                 "volume": volume, "source": "Telegram / Blind Viewer", "source_date": source["date"],
@@ -46,10 +55,23 @@ def build(root):
     for item in items:
         hashes.setdefault(item["sha256"], []).append(item["id"])
     duplicates = [ids for ids in hashes.values() if len(ids) > 1]
+    errors = {}
+    if missing:
+        errors["missing"] = missing
+    if len(items) != EXPECTED_MEDIA_COUNT:
+        errors["count"] = {"expected": EXPECTED_MEDIA_COUNT, "actual": len(items)}
+    if duration_mismatches:
+        errors["duration_mismatches"] = duration_mismatches
+    if codec_mismatches:
+        errors["codec_mismatches"] = codec_mismatches
     if duplicates:
-        raise ValueError(f"Duplicate media hashes: {duplicates}")
+        errors["duplicate_hashes"] = duplicates
+    if errors:
+        raise ValueError(json.dumps(errors, indent=2, ensure_ascii=False))
     result = {"version": 1, "updated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(), "media": items}
-    manifest_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    temporary = manifest_path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(manifest_path)
     return {"valid": len(items), "missing": missing, "duplicates": duplicates, "manifest": str(manifest_path)}
 
 

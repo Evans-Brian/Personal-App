@@ -83,20 +83,55 @@ def timestamp(seconds):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
 
+def write_text_atomic(path, text):
+    temporary = path.with_name(f"{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+
+
 def outputs(root, entry, segments):
     folder = root / "transcripts" / entry["course_id"]
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"v{int(entry['volume']):02d}"
     payload = {"media_id": entry["id"], "pipeline_version": PIPELINE_VERSION, "segments": segments}
-    (folder / f"{stem}.segments.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(folder / f"{stem}.segments.json", json.dumps(payload, indent=2, ensure_ascii=False))
     vtt = ["WEBVTT", ""]
     markdown = [f"# {entry.get('title', entry['course_id'])} — Volume {entry['volume']}", ""]
     for segment in segments:
         text = segment["corrected_text"]
         vtt.extend([str(segment["segment_id"] + 1), f"{timestamp(segment['start_seconds'])} --> {timestamp(segment['end_seconds'])}", text, ""])
         markdown.append(f"[{timestamp(segment['start_seconds'])}](bjj://{entry['id']}?t={segment['start_seconds']:.3f}) {text}")
-    (folder / f"{stem}.vtt").write_text("\n".join(vtt), encoding="utf-8")
-    (folder / f"{stem}.md").write_text("\n\n".join(markdown) + "\n", encoding="utf-8")
+    write_text_atomic(folder / f"{stem}.vtt", "\n".join(vtt))
+    write_text_atomic(folder / f"{stem}.md", "\n\n".join(markdown) + "\n")
+
+
+def transcript_output_complete(root, entry):
+    relative = Path(entry.get("transcript", ""))
+    if not relative or relative.is_absolute() or ".." in relative.parts:
+        return False
+    path = root / relative
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict) or data.get("media_id") != entry.get("id") or data.get("pipeline_version") != PIPELINE_VERSION:
+        return False
+    segments = data.get("segments")
+    if not isinstance(segments, list) or not segments:
+        return False
+    previous_end = 0.0
+    for segment in segments:
+        try:
+            start = float(segment["start_seconds"])
+            end = float(segment["end_seconds"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if start < previous_end - 0.01 or end <= start or "corrected_text" not in segment or "raw_text" not in segment:
+            return False
+        previous_end = end
+    return previous_end >= float(entry.get("duration_seconds") or 0) - 1
 
 
 def chapter_at(entry, seconds):
@@ -228,8 +263,7 @@ def main():
     elif args.all:
         library = BJJLibrary(args.root, args.root / "unused-vault")
         for entry in library.manifest()["media"]:
-            output = args.root / entry.get("transcript", "")
-            if output.is_file():
+            if transcript_output_complete(args.root, entry):
                 print({"media_id": entry["id"], "status": "skipped", "reason": "complete"}, flush=True)
                 continue
             count = transcribe(args.root, entry["id"], args.model, "cpu" if args.cpu else "cuda", "int8" if args.cpu else "float16")

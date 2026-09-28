@@ -3,12 +3,15 @@ import json
 import tempfile
 import threading
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
+import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary
 from official_chapters import chapters
-from transcribe_bjj import chapter_at, normalize_segments
+from transcribe_bjj import chapter_at, normalize_segments, outputs, transcript_output_complete
 
 
 class BJJTests(unittest.TestCase):
@@ -58,6 +61,19 @@ class BJJTests(unittest.TestCase):
         loaded = self.library.training("2026-09-28")
         self.assertEqual((loaded["techniques"], loaded["next_focus"]), ("Octopus entry", "Hip position"))
 
+    def test_study_notes_do_not_collide_with_same_clock_tick(self):
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 9, 28, 12, 0, 0, 123456, tzinfo=tz)
+
+        with patch("bjj.datetime", FixedDatetime):
+            first = self.library.save_note({"media_id": "octopus-guard-2-v01", "timestamp": 2.5, "text": "First"})
+            second = self.library.save_note({"media_id": "octopus-guard-2-v01", "timestamp": 2.5, "text": "Second"})
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertTrue((self.vault / first["path"]).is_file())
+        self.assertTrue((self.vault / second["path"]).is_file())
+
     def test_http_range_and_security(self):
         database = Path(self.temporary.name) / "oura.sqlite3"
         server = make_server(self.vault, database, 0, bjj_root=self.root)
@@ -88,6 +104,37 @@ class BJJTests(unittest.TestCase):
         ]
         result = normalize_segments(segments, 10)
         self.assertEqual((len(result), result[0]["corrected_text"], result[0]["end_seconds"]), (1, "Keep moving", 10))
+
+    def test_prepare_manifest_rejects_failed_media_verification(self):
+        root = Path(self.temporary.name) / "prepare"
+        for course in prepare_bjj.COURSES:
+            folder = root / "media" / course["id"]
+            folder.mkdir(parents=True)
+            for volume in range(1, 5):
+                media_id = f"{course['id']}-v{volume:02d}"
+                (folder / f"{media_id}.mp4").write_bytes(media_id.encode("utf-8"))
+
+        def fake_probe(path):
+            course_id = path.parent.name
+            volume = int(path.stem.rsplit("-v", 1)[1])
+            return prepare_bjj.EXPECTED[course_id]["references"][volume - 1] + 10, [{"codec_type": "audio", "codec_name": "aac"}]
+
+        with patch("prepare_bjj.probe", side_effect=fake_probe), patch("prepare_bjj.sha256", side_effect=lambda path: path.stem):
+            with self.assertRaisesRegex(ValueError, "duration_mismatches"):
+                prepare_bjj.build(root)
+        self.assertFalse((root / "manifest.json").exists())
+
+    def test_transcript_completion_rejects_partial_or_corrupt_output(self):
+        output = self.root / self.entry["transcript"]
+        output.write_text("{", encoding="utf-8")
+        self.assertFalse(transcript_output_complete(self.root, self.entry))
+        output.write_text(json.dumps({"media_id": self.entry["id"], "pipeline_version": 1,
+                                      "segments": [{"segment_id": 0, "start_seconds": 0, "end_seconds": 5,
+                                                    "raw_text": "half", "corrected_text": "half"}]}), encoding="utf-8")
+        self.assertFalse(transcript_output_complete(self.root, self.entry))
+        outputs(self.root, self.entry, [{"segment_id": 0, "start_seconds": 0, "end_seconds": 10,
+                                         "raw_text": "done", "corrected_text": "done"}])
+        self.assertTrue(transcript_output_complete(self.root, self.entry))
 
 
 if __name__ == "__main__":

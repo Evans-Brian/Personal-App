@@ -223,7 +223,12 @@ class BJJLibrary:
         folder = self.vault / "BJJ" / "Study Notes"
         folder.mkdir(parents=True, exist_ok=True)
         created = datetime.now().astimezone()
-        path = folder / f"{created:%Y-%m-%d} {media_id} {created:%H%M%S}.md"
+        stem = f"{created:%Y-%m-%d} {media_id} {created:%H%M%S%f}"
+        path = folder / f"{stem}.md"
+        suffix = 2
+        while path.exists():
+            path = folder / f"{stem}-{suffix}.md"
+            suffix += 1
         course = next(course for course in COURSES if course["id"] == item["course_id"])
         tags = [tag for tag in data.get("tags", []) if isinstance(tag, str) and re.fullmatch(r"[a-z0-9-]{1,40}", tag)]
         body = ["---", "type: bjj-study-note", f"created: {created.isoformat()}", f"course: {json.dumps(course['title'])}",
