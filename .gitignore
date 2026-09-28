@@ -14,6 +14,17 @@ config.local.json
 .env
 .env.*
 backups/
+BJJ-Library/
+media/
+transcripts/
+index/
+work/
+models/
+*.vtt
+*.segments.json
+*.jsonl
+*.onnx
+*.safetensors
 Journal/
 People/
 Restaurants/

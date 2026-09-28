@@ -12,6 +12,7 @@ from restaurants import Restaurants
 from people import People
 from oura import OuraStore
 from oura_sync import OuraSync
+from bjj import BJJLibrary
 
 ROOT = Path(__file__).resolve().parent
 
@@ -32,7 +33,13 @@ def configured_remote():
     return json.loads(config.read_text(encoding="utf-8")).get("remote_access", {}) if config.exists() else {}
 
 
-def make_server(vault, database, port=8765, remote=None):
+def configured_bjj_library():
+    config = ROOT / "config.local.json"
+    value = json.loads(config.read_text(encoding="utf-8")).get("bjj_library") if config.exists() else None
+    return Path(value) if value else ROOT / "data" / "bjj-library"
+
+
+def make_server(vault, database, port=8765, remote=None, bjj_root=None):
     remote = remote or {}
     remote_origin = remote.get('origin', '')
     remote_login = remote.get('login', '')
@@ -43,6 +50,7 @@ def make_server(vault, database, port=8765, remote=None):
     journal = Journal(vault)
     restaurants = Restaurants(vault)
     people = People(vault)
+    bjj = BJJLibrary(bjj_root or ROOT / "data" / "bjj-library", vault)
     if Path(database).resolve().is_relative_to(journal.vault):
         raise ValueError("Keep the SQLite database outside your Obsidian vault.")
     oura = OuraStore(database)
@@ -76,6 +84,46 @@ def make_server(vault, database, port=8765, remote=None):
                             self.headers.get('Origin', remote_origin) == remote_origin)
             return host in local_hosts and self.headers.get('Origin', f'http://{host}') == f'http://{host}'
 
+        def serve_bjj_media(self, media_id):
+            try:
+                _, path = bjj.entry(media_id)
+            except ValueError:
+                return self.respond(404, {"error": "Media not found."})
+            size = path.stat().st_size
+            start, end, status = 0, size - 1, 200
+            header = self.headers.get("Range")
+            if header:
+                match = __import__('re').fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
+                if not match or (not match.group(1) and not match.group(2)):
+                    return self.respond(416, {"error": "Invalid byte range."}, headers={"Content-Range": f"bytes */{size}"})
+                if match.group(1):
+                    start = int(match.group(1)); end = int(match.group(2)) if match.group(2) else size - 1
+                else:
+                    suffix = int(match.group(2)); start = max(0, size - suffix); end = size - 1
+                if start >= size or start > end:
+                    return self.respond(416, {"error": "Range is outside the media file."}, headers={"Content-Range": f"bytes */{size}"})
+                end = min(end, size - 1); status = 206
+            self.send_response(status)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "private, no-store")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}") if status == 206 else None
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            self.end_headers()
+            with path.open("rb") as source:
+                source.seek(start)
+                remaining = end - start + 1
+                try:
+                    while remaining:
+                        block = source.read(min(1024 * 1024, remaining))
+                        if not block:
+                            break
+                        self.wfile.write(block); remaining -= len(block)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass  # Browsers routinely cancel an old range request after a seek.
+
         def do_GET(self):
             if not self.allowed():
                 return self.respond(403, {"error": "Open the app using its local address or configured private Tailscale address."})
@@ -95,6 +143,19 @@ def make_server(vault, database, port=8765, remote=None):
                     return self.respond(200, {'entries': journal.history()})
                 if url.path == '/api/tasks':
                     return self.respond(200, {'tasks': journal.task_history(write=True)})
+                if url.path == '/api/bjj/library':
+                    return self.respond(200, bjj.library())
+                if url.path == '/api/bjj/transcript':
+                    return self.respond(200, bjj.transcript(parse_qs(url.query).get('media_id', [''])[0]))
+                if url.path == '/api/bjj/search':
+                    query = parse_qs(url.query)
+                    return self.respond(200, {'results': bjj.search(query.get('q', [''])[0], query.get('course', [''])[0], query.get('volume', [''])[0], query.get('chapter', [''])[0], query.get('semantic', ['0'])[0] == '1')})
+                if url.path == '/api/bjj/notes':
+                    return self.respond(200, {'notes': bjj.notes()})
+                if url.path == '/api/bjj/training':
+                    return self.respond(200, bjj.training(parse_qs(url.query).get('date', [''])[0]))
+                if url.path.startswith('/api/bjj/media/'):
+                    return self.serve_bjj_media(url.path.removeprefix('/api/bjj/media/'))
                 if url.path == '/api/oura/status':
                     return self.respond(200, sync.status())
                 if url.path == '/api/oura/authorize':
@@ -113,6 +174,7 @@ def make_server(vault, database, port=8765, remote=None):
                     return self.respond(303, b'', headers={'Location': f'http://127.0.0.1:{self.server.server_port}/', 'Set-Cookie': 'oura_state=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/api/oura/callback'})
                 assets = {"/people.js": ("people.js", "text/javascript"), "/restaurants.js": ("restaurants.js", "text/javascript"), "/plans.js": ("plans.js", "text/javascript"), "/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
                 assets["/voice.js"] = ("voice.js", "text/javascript")
+                assets["/bjj.js"] = ("bjj.js", "text/javascript")
                 assets.update({f"/icon-{size}.png": (f"icon-{size}.png", "image/png") for size in (180,192,512)})
                 assets["/manifest.webmanifest"] = ("manifest.webmanifest", "application/manifest+json")
                 if url.path in assets:
@@ -141,7 +203,7 @@ def make_server(vault, database, port=8765, remote=None):
                     return self.respond(503, {'error': 'Local transcription could not finish. Try recording again.'})
             if not self.allowed() or self.headers.get("Content-Type") != "application/json":
                 return self.respond(403, {"error": "Only same-origin JSON requests are accepted."})
-            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect'):
+            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect', '/api/bjj/note', '/api/bjj/training'):
                 return self.respond(404, {"error": "Not found"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -154,6 +216,10 @@ def make_server(vault, database, port=8765, remote=None):
                     return self.respond(200, people.add(data))
                 if self.path == '/api/restaurants':
                     return self.respond(200, restaurants.save(data.get('restaurants'), data.get('revision')))
+                if self.path == '/api/bjj/note':
+                    return self.respond(200, bjj.save_note(data))
+                if self.path == '/api/bjj/training':
+                    return self.respond(200, bjj.save_training(data))
                 if self.path == '/api/oura/setup':
                     sync.configure(data.get('client_id'), data.get('client_secret'))
                     return self.respond(200, sync.status())
@@ -194,10 +260,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", type=Path)
     parser.add_argument("--database", type=Path, default=ROOT / "data" / "oura.sqlite3")
+    parser.add_argument("--bjj-library", type=Path)
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     args.vault = args.vault if args.vault is not None else configured_vault()
-    server = make_server(args.vault, args.database, args.port, configured_remote())
+    server = make_server(args.vault, args.database, args.port, configured_remote(), args.bjj_library or configured_bjj_library())
     server.oura_sync.start_worker()
     print(f"Journal ready: http://127.0.0.1:{server.server_port} | Vault: {args.vault.resolve()}", flush=True)
     try:
