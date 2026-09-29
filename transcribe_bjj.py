@@ -93,7 +93,8 @@ def outputs(root, entry, segments):
     folder = root / "transcripts" / entry["course_id"]
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"v{int(entry['volume']):02d}"
-    payload = {"media_id": entry["id"], "pipeline_version": PIPELINE_VERSION, "segments": segments}
+    payload = {"media_id": entry["id"], "pipeline_version": PIPELINE_VERSION,
+               "transcription_complete": True, "segments": segments}
     write_text_atomic(folder / f"{stem}.segments.json", json.dumps(payload, indent=2, ensure_ascii=False))
     vtt = ["WEBVTT", ""]
     markdown = [f"# {entry.get('title', entry['course_id'])} — Volume {entry['volume']}", ""]
@@ -131,7 +132,7 @@ def transcript_output_complete(root, entry):
         if start < previous_end - 0.01 or end <= start or "corrected_text" not in segment or "raw_text" not in segment:
             return False
         previous_end = end
-    return previous_end >= float(entry.get("duration_seconds") or 0) - 1
+    return data.get("transcription_complete") is True or previous_end >= float(entry.get("duration_seconds") or 0) - 1
 
 
 def chapter_at(entry, seconds):

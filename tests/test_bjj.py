@@ -412,6 +412,11 @@ class BJJTests(unittest.TestCase):
                                          "raw_text": "done", "corrected_text": "done"}])
         self.assertTrue(transcript_output_complete(self.root, self.entry))
 
+    def test_transcript_completion_allows_trailing_silence(self):
+        outputs(self.root, self.entry, [{"segment_id": 0, "start_seconds": 0, "end_seconds": 5,
+                                         "raw_text": "done", "corrected_text": "done"}])
+        self.assertTrue(transcript_output_complete(self.root, self.entry))
+
 
 if __name__ == "__main__":
     unittest.main()
