@@ -45,6 +45,20 @@ class ChapterAITests(unittest.TestCase):
         self.assertAlmostEqual(vectors[0][1], 2 ** -0.5)
         self.assertEqual(vectors[1], [0.0, 1.0])
 
+    def test_bge_query_uses_query_embedding_path(self):
+        class FakeModel:
+            def query_embed(self, text):
+                self.text = text
+                return [[0.25, 0.75]]
+
+        class TwoDimensionalEmbedder(LocalBGEEmbedder):
+            dimensions = 2
+
+        embedder = TwoDimensionalEmbedder()
+        embedder._model = FakeModel()
+        self.assertEqual(embedder.embed_query("half guard"), [0.25, 0.75])
+        self.assertEqual(embedder._model.text, "half guard")
+
     def test_summary_cache_is_restart_safe_and_invalidates_changed_transcript(self):
         with tempfile.TemporaryDirectory() as root:
             library = FakeLibrary(root)

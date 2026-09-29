@@ -53,7 +53,11 @@ class LocalBGEEmbedder:
 
     @property
     def installed(self):
-        return self.runtime_root.is_dir() and self.model_root.is_dir()
+        return (
+            (self.runtime_root / "fastembed").is_dir()
+            and self.model_root.is_dir()
+            and any(self.model_root.rglob("*"))
+        )
 
     def _load(self):
         if self._model is not None:
@@ -113,6 +117,8 @@ class LocalBGEEmbedder:
     def embed_query(self, text):
         with self._lock:
             model = self._load()
+            if hasattr(model, "query_embed"):
+                return list(next(iter(model.query_embed(str(text)))))
             instruction = "Represent this sentence for searching relevant passages: "
             return list(next(iter(model.embed([instruction + str(text)]))))
 
