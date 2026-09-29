@@ -1,6 +1,6 @@
 # BJJ implementation and operations
 
-The application keeps source code in Git and all private/generated BJJ data under the ignored, absolute `bjj_library` directory configured in `config.local.json`. The production location is `C:\BJJ-Library` and the Obsidian vault remains the canonical store for human-written notes.
+The application keeps source code in Git and all private/generated BJJ data under the ignored, absolute `bjj_library` directory configured in `config.local.json`. The Obsidian vault remains the canonical store for human-written notes.
 
 ## Data contract
 
@@ -10,23 +10,23 @@ Canonical transcript JSON contains `segments`. Every segment records `course_id`
 
 ## Operations
 
-1. Download one Telegram file at a time into the matching `C:\BJJ-Library\media\<course-id>` folder and normalize its filename without transcoding.
+1. Download one Telegram file at a time into the matching `<BJJLibrary>\media\<course-id>` folder and normalize its filename without transcoding.
 2. Use `ffprobe` and SHA-256 to populate and validate the manifest. Keep the corrected January 4 Octopus Guard files.
 3. Pilot transcription:
 
-   `python transcribe_bjj.py --root C:\BJJ-Library --media-id octopus-guard-2-v01`
+   `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --media-id octopus-guard-2-v01`
 
 4. Review the pilot at its beginning, middle, and end; finalize vocabulary and official chapter starts in the manifest.
-5. Run the remaining media IDs sequentially with `python transcribe_bjj.py --root C:\BJJ-Library --all`. The JSONL work file is appended segment by segment and a retry resumes after the last completed timestamp. Add `--cpu` for the clean int8 fallback.
+5. Run the remaining media IDs sequentially with `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --all`. The JSONL work file is appended segment by segment and a retry resumes after the last completed timestamp. Add `--cpu` for the clean int8 fallback.
 6. Install the local BGE runtime/model and rebuild the idempotent transcript-and-journal index:
 
-   `python setup_embeddings.py --bjj-library C:\BJJ-Library --vault C:\Obsidian-Personal`
+   `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`
 
-   Later transcript-only pipeline runs may still invoke `python transcribe_bjj.py --root C:\BJJ-Library --index`; the local embedding setup must already be present and the configured vault should be used when journals also need rebuilding.
+   Later transcript-only pipeline runs may still invoke `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --index`; the local embedding setup must already be present and the configured vault should be used when journals also need rebuilding.
 
 7. Start the journal normally. `/api/bjj/media/<media-id>` supports private same-origin byte ranges; BJJ notes are Markdown under `BJJ/Study Notes` and daily training entries under `BJJ/Journal` in the configured vault.
 
-On Windows, optional private wheels `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` may be installed under `C:\BJJ-Library\gpu-runtime`. The pipeline discovers their DLL folders automatically; no model or runtime files belong in Git. Set `"bjj_library": "C:\\BJJ-Library"` in the ignored `config.local.json`.
+On Windows, optional private wheels `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` may be installed under the library's `gpu-runtime` folder. The pipeline discovers their DLL folders automatically; no model or runtime files belong in Git. Set the absolute `bjj_library` path in the ignored `config.local.json`.
 
 ## Private-data gate
 
