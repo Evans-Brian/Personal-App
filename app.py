@@ -113,6 +113,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
             self.send_header("Content-Length", str(end - start + 1))
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Cache-Control", "private, no-store")
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}") if status == 206 else None
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
