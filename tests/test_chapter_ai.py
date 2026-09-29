@@ -1,9 +1,12 @@
 import tempfile
 import unittest
+import json
+from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
 
-from chapter_ai import AIServiceUnavailable, JevReranker, OpenAIChapterSummarizer
+from chapter_ai import (AIServiceUnavailable, CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL,
+                        JevReranker, OpenAIChapterSummarizer)
 from embeddings import LocalBGEEmbedder
 from setup_chapter_search import generate_summaries
 
@@ -69,6 +72,22 @@ class ChapterAITests(unittest.TestCase):
             third = generate_summaries(library, summarizer, progress=lambda _: None)
             self.assertEqual((first["generated"], second["generated"], third["generated"]), (1, 0, 1))
             self.assertEqual(len(summarizer.calls), 2)
+
+    def test_api_setup_reuses_valid_codex_subscription_summary(self):
+        with tempfile.TemporaryDirectory() as root:
+            library = FakeLibrary(root)
+            library.summary_path.write_text(json.dumps({"version": 1, "summaries": {
+                "course-v01:v1-1": {
+                    "source_sha256": sha256(library.content.encode()).hexdigest(),
+                    "model": CODEX_SUMMARY_MODEL,
+                    "prompt_version": CODEX_PROMPT_VERSION,
+                    "summary": "Control the knee line, then expose the heel.",
+                }
+            }}), encoding="utf-8")
+            summarizer = FakeSummarizer()
+            result = generate_summaries(library, summarizer, progress=lambda _: None)
+            self.assertEqual(result["generated"], 0)
+            self.assertEqual(summarizer.calls, [])
 
     @patch("chapter_ai._post_json")
     def test_jev_ranks_only_fifteen_candidates(self, post):

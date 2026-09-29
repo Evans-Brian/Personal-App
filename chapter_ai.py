@@ -12,7 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 JEV_MODEL = "jev-1.13.0"
 JEV_SHORTLIST = 15
 OPENAI_SUMMARY_MODEL = "gpt-6-luna"
+CODEX_SUMMARY_MODEL = "codex-gpt-6-luna"
 SUMMARY_PROMPT_VERSION = "bjj-chapter-summary-v1"
+CODEX_PROMPT_VERSION = "codex-bjj-chapter-summary-v1"
 
 
 class AIServiceUnavailable(RuntimeError):

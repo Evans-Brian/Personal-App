@@ -18,11 +18,15 @@ Canonical transcript JSON contains `segments`. Every segment records `course_id`
 
 4. Review the pilot at its beginning, middle, and end; finalize vocabulary and official chapter starts in the manifest.
 5. Run the remaining media IDs sequentially with `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --all`. The JSONL work file is appended segment by segment and a retry resumes after the last completed timestamp. Add `--cpu` for the clean int8 fallback.
-6. Generate transcript-hash-cached chapter summaries, install the local BGE runtime/model under `data/`, and rebuild the idempotent chapter-and-BJJ-notes index:
+6. Generate transcript-hash-cached chapter summaries and rebuild the chapter-and-BJJ-notes index through the signed-in Codex CLI:
+
+   `python summarize_with_codex.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault" --rebuild`
+
+   This is a resumable, one-time use of ChatGPT/Codex subscription capacity. Transcripts are sent to Codex in small batches; summaries and the BGE index remain under the private library. Run `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` first if the local BGE runtime/model is not installed. For an OpenAI API-billed alternative, use:
 
    `python setup_chapter_search.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`
 
-   Use `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` only when you need to rebuild the local exact/semantic index without regenerating missing chapter summaries. Personal journal files are never ingested.
+   Use `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` to rebuild only the local exact/semantic index. Personal journal files are never ingested.
 
 7. Start the journal normally. `/api/bjj/media/<media-id>` supports private same-origin byte ranges; BJJ notes are Markdown under `BJJ/Study Notes` and daily training entries under `BJJ/Journal` in the configured vault.
 

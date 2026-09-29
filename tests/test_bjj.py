@@ -12,7 +12,7 @@ from unittest.mock import patch
 import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary, default_ai_secret_path
-from chapter_ai import OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION
+from chapter_ai import CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL, OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION
 from embeddings import EmbeddingUnavailable, HashEmbedder
 from journal import Conflict
 from official_chapters import chapters
@@ -47,6 +47,7 @@ class BJJTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         base = Path(self.temporary.name)
         self.root, self.vault = base / "library", base / "vault"
+        self.secret_path = base / "ai-secrets.bin"
         media = self.root / "media" / "octopus-guard-2"
         transcript = self.root / "transcripts" / "octopus-guard-2"
         media.mkdir(parents=True); transcript.mkdir(parents=True); self.vault.mkdir()
@@ -60,7 +61,7 @@ class BJJTests(unittest.TestCase):
                                    "raw_text": "Use the under hook from octopus guard.",
                                    "corrected_text": "Use the underhook from octopus guard.", "chapter_id": "intro"}]}
         (transcript / "v01.segments.json").write_text(json.dumps(segments), encoding="utf-8")
-        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder())
+        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder(), ai_secret_path=self.secret_path)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -115,6 +116,26 @@ class BJJTests(unittest.TestCase):
         self.assertEqual(result[0]["summary"], "Maintain an underhook and control distance from octopus guard.")
         self.assertEqual(result[0]["excerpt"], result[0]["summary"])
 
+    def test_codex_subscription_summary_is_accepted_with_source_hash(self):
+        source = self.library.chapter_sources()[0]
+        self.library.summary_path.parent.mkdir(parents=True)
+        self.library.summary_path.write_text(json.dumps({"version": 1, "summaries": {
+            source["id"]: {
+                "source_sha256": sha256(source["content"].encode()).hexdigest(),
+                "model": CODEX_SUMMARY_MODEL,
+                "prompt_version": CODEX_PROMPT_VERSION,
+                "summary": "Use the underhook to control octopus guard distance.",
+            }
+        }}), encoding="utf-8")
+        self.assertEqual(self.library.chapter_sources()[0]["summary"], "Use the underhook to control octopus guard distance.")
+        self.library.rebuild_index(require_summaries=True)
+        connection = self.library.connect()
+        try:
+            model = connection.execute("SELECT value FROM index_meta WHERE key='summary_model'").fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(model, CODEX_SUMMARY_MODEL)
+
     def test_semantic_search_sends_exactly_top_fifteen_candidates_to_reranker(self):
         chapters = []
         segments = []
@@ -127,7 +148,8 @@ class BJJTests(unittest.TestCase):
         (self.root / "manifest.json").write_text(json.dumps({"version": 1, "media": [self.entry]}), encoding="utf-8")
         (self.root / self.entry["transcript"]).write_text(json.dumps({"segments": segments}), encoding="utf-8")
         reranker = FakeReranker()
-        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder(), reranker=reranker)
+        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder(), reranker=reranker,
+                                  ai_secret_path=self.secret_path)
         self.library.rebuild_index()
         results = self.library.search("guard technique", semantic=True, limit=12)
         self.assertEqual(len(reranker.calls[0][1]), 15)
@@ -228,7 +250,7 @@ class BJJTests(unittest.TestCase):
         connection.close()
 
     def test_exact_index_and_journal_refresh_do_not_require_embeddings(self):
-        self.library = BJJLibrary(self.root, self.vault, embedder=UnavailableEmbedder())
+        self.library = BJJLibrary(self.root, self.vault, embedder=UnavailableEmbedder(), ai_secret_path=self.secret_path)
         folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True)
         path = folder / "2026-09-28.md"
@@ -324,7 +346,8 @@ class BJJTests(unittest.TestCase):
 
     def test_http_range_and_security(self):
         database = Path(self.temporary.name) / "oura.sqlite3"
-        server = make_server(self.vault, database, 0, bjj_root=self.root)
+        with patch("bjj.default_ai_secret_path", return_value=self.secret_path):
+            server = make_server(self.vault, database, 0, bjj_root=self.root)
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
         try:
             def get(path, headers=None):

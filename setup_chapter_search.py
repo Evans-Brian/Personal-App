@@ -10,7 +10,8 @@ from hashlib import sha256
 from pathlib import Path
 
 from bjj import BJJLibrary
-from chapter_ai import OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION, OpenAIChapterSummarizer
+from chapter_ai import (CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL, OPENAI_SUMMARY_MODEL,
+                        SUMMARY_PROMPT_VERSION, OpenAIChapterSummarizer)
 from setup_embeddings import configured_paths, install_embeddings
 
 
@@ -46,8 +47,10 @@ def generate_summaries(library, summarizer, cache_path=None, progress=print):
     for position, source in enumerate(sources, 1):
         digest = sha256(source["content"].encode("utf-8")).hexdigest()
         cached = cache["summaries"].get(source["id"], {})
-        if (cached.get("source_sha256") == digest and cached.get("model") == summarizer.model
-                and cached.get("prompt_version") == SUMMARY_PROMPT_VERSION and cached.get("summary")):
+        valid_version = {summarizer.model: SUMMARY_PROMPT_VERSION,
+                         CODEX_SUMMARY_MODEL: CODEX_PROMPT_VERSION}.get(cached.get("model"))
+        if (cached.get("source_sha256") == digest and valid_version is not None
+                and cached.get("prompt_version") == valid_version and cached.get("summary")):
             continue
         summary = summarizer.summarize(source["title"], source["content"])
         cache["summaries"][source["id"]] = {

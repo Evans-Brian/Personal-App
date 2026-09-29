@@ -16,6 +16,8 @@ from pathlib import Path
 from embeddings import EmbeddingUnavailable, LocalBGEEmbedder, blob_to_vector, vector_to_blob
 from chapter_ai import (
     AIServiceUnavailable,
+    CODEX_SUMMARY_MODEL,
+    CODEX_PROMPT_VERSION,
     JEV_SHORTLIST,
     OPENAI_SUMMARY_MODEL,
     SUMMARY_PROMPT_VERSION,
@@ -265,10 +267,11 @@ class BJJLibrary:
                 connection.execute("DELETE FROM index_meta")
                 for document, vector in zip(documents, vectors):
                     self._insert_document(connection, document, vector, embedding_model)
+                summary_models = {document.get("summary_model", "") for document in transcript_documents if document.get("summary")}
                 metadata = {"schema_version": "4", "embedding_model": self.embedder.version,
                             "embedding_dimensions": str(self.embedder.dimensions), "chunks": str(len(documents)),
                             "built_at": _utc_now(), "chapter_summaries": str(len(transcript_documents) - len(missing_summaries)),
-                            "summary_model": OPENAI_SUMMARY_MODEL if transcript_documents and not missing_summaries else ""}
+                            "summary_model": ",".join(sorted(summary_models)) if transcript_documents and not missing_summaries else ""}
                 if not embedding_model:
                     metadata["embedding_model"] = ""
                     metadata["embedding_dimensions"] = "0"
@@ -350,9 +353,13 @@ class BJJLibrary:
                 summary_entry = summaries.get(identifier, {})
                 digest = sha256(content.encode("utf-8")).hexdigest()
                 summary = ""
+                valid_version = {
+                    OPENAI_SUMMARY_MODEL: SUMMARY_PROMPT_VERSION,
+                    CODEX_SUMMARY_MODEL: CODEX_PROMPT_VERSION,
+                }.get(summary_entry.get("model"))
                 if (summary_entry.get("source_sha256") == digest
-                        and summary_entry.get("model") == OPENAI_SUMMARY_MODEL
-                        and summary_entry.get("prompt_version") == SUMMARY_PROMPT_VERSION):
+                        and valid_version is not None
+                        and summary_entry.get("prompt_version") == valid_version):
                     summary = str(summary_entry.get("summary", "")).strip()
                 display = summary or content
                 documents.append({
@@ -360,7 +367,8 @@ class BJJLibrary:
                     "instructor": course["instructor"], "volume": int(item["volume"]), "chapter": str(chapter_id),
                     "start_seconds": float(chapter_bounds.get("start_seconds", group[0]["start_seconds"])),
                     "end_seconds": float(chapter_bounds.get("end_seconds", group[-1]["end_seconds"])),
-                    "excerpt": display, "content": content, "summary": summary, "search_text": content,
+                    "excerpt": display, "content": content, "summary": summary,
+                    "summary_model": summary_entry.get("model", "") if summary else "", "search_text": content,
                     "media_sha256": item.get("sha256", ""), "source_type": "bjj_transcript",
                     "source_path": item.get("transcript", ""), "journal_date": "", "section": title,
                     "title": f"{course['title']} · Volume {item['volume']} · {title}",
