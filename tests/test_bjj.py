@@ -305,6 +305,7 @@ class BJJTests(unittest.TestCase):
                 return response.status, body, values
             status, body, headers = get("/api/bjj/media/octopus-guard-2-v01", {"Range": "bytes=2-5"})
             self.assertEqual((status, body, headers["Content-Range"]), (206, b"2345", "bytes 2-5/10"))
+            self.assertEqual(headers["Cross-Origin-Resource-Policy"], "same-origin")
             self.library.rebuild_index()
             status, body, _ = get("/api/bjj/search?q=underhook&source=bjj")
             self.assertEqual(status, 200)
