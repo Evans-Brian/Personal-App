@@ -12,6 +12,7 @@ import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary
 from embeddings import EmbeddingUnavailable, HashEmbedder
+from journal import Conflict
 from official_chapters import chapters
 from transcribe_bjj import chapter_at, normalize_segments, outputs, transcript_output_complete
 
@@ -142,10 +143,12 @@ class BJJTests(unittest.TestCase):
                                        "text": "Keep my elbow close.", "tags": ["guard"]})
         self.assertIn("bjj://octopus-guard-2-v01?t=2.500", (self.vault / note["path"]).read_text(encoding="utf-8"))
         self.assertEqual(self.library.notes()[0]["timestamp"], 2.5)
-        journal = self.library.save_training({"date": "2026-09-28", "general_notes": "Octopus entry", "session_goals": "Hip position", "rating": "4"})
+        loaded = self.library.training("2026-09-28")
+        journal = self.library.save_training({"date": "2026-09-28", "general_notes": "Octopus entry", "session_goals": "Hip position", "rating": "4", "revision": loaded["revision"]})
         self.assertIn("Octopus entry", (self.vault / journal["path"]).read_text(encoding="utf-8"))
         loaded = self.library.training("2026-09-28")
         self.assertEqual((loaded["general_notes"], loaded["session_goals"], loaded["rating"]), ("Octopus entry", "Hip position", "4"))
+        self.assertEqual(loaded["revision"], journal["revision"])
 
     def test_training_rating_validation(self):
         with self.assertRaisesRegex(ValueError, "from 1 to 5"):
@@ -174,7 +177,8 @@ class BJJTests(unittest.TestCase):
             "## General Notes\n\nOld notes\n\n## Private review\n\nDo not overwrite\n",
             encoding="utf-8",
         )
-        self.library.save_training({"date": "2026-09-28", "general_notes": "New notes", "session_goals": "Frames"})
+        loaded = self.library.training("2026-09-28")
+        self.library.save_training({"date": "2026-09-28", "general_notes": "New notes", "session_goals": "Frames", "revision": loaded["revision"]})
         text = path.read_text(encoding="utf-8")
         self.assertIn("custom: keep", text)
         self.assertIn("Intro stays.", text)
@@ -182,6 +186,18 @@ class BJJTests(unittest.TestCase):
         self.assertIn("## General Notes\n\nNew notes", text)
         self.assertIn("## Session Goals\n\nFrames", text)
         self.assertNotIn("Old notes", text)
+
+    def test_training_save_rejects_stale_revision(self):
+        folder = self.vault / "BJJ" / "Journal"
+        folder.mkdir(parents=True)
+        path = folder / "2026-09-28.md"
+        path.write_text("# BJJ training\n\n## General Notes\n\nLoaded draft\n", encoding="utf-8")
+        loaded = self.library.training("2026-09-28")
+        path.write_text("# BJJ training\n\n## General Notes\n\nExternal edit\n", encoding="utf-8")
+        with self.assertRaisesRegex(Conflict, "changed since you opened"):
+            self.library.save_training({"date": "2026-09-28", "general_notes": "Stale overwrite", "revision": loaded["revision"]})
+        self.assertIn("External edit", path.read_text(encoding="utf-8"))
+        self.assertNotIn("Stale overwrite", path.read_text(encoding="utf-8"))
 
     def test_study_notes_do_not_collide_with_same_clock_tick(self):
         class FixedDatetime(datetime):

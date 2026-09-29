@@ -3,13 +3,18 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sqlite3
+import tempfile
+import threading
 from contextlib import closing
 from datetime import date, datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 
 from embeddings import EmbeddingUnavailable, LocalBGEEmbedder, blob_to_vector, vector_to_blob
+from journal import Conflict
 
 COURSES = (
     {"id": "down-right-sloppy-half-butterfly", "title": "Down Right Sloppy Half Butterfly", "instructor": "Eoghan O'Flanagan"},
@@ -86,6 +91,7 @@ class BJJLibrary:
         self.index_path = self.root / "index" / "bjj.sqlite3"
         self.manifest_path = self.root / "manifest.json"
         self.embedder = embedder or LocalBGEEmbedder()
+        self.training_lock = threading.Lock()
 
     def manifest(self):
         if not self.manifest_path.exists():
@@ -478,6 +484,7 @@ class BJJLibrary:
 
     def save_training(self, data):
         day = _safe_day(data.get("date"))
+        revision = data.get("revision")
         folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{day}.md"
@@ -493,25 +500,41 @@ class BJJLibrary:
         if rating and rating not in {"1", "2", "3", "4", "5"}:
             raise ValueError("Session rating must be from 1 to 5.")
         values["Session rating"] = rating
-        if path.is_file():
-            text = path.read_text(encoding="utf-8")
-            for title, value in values.items():
-                section = f"## {title}\n\n{value}\n\n"
-                pattern = rf"^## {re.escape(title)}\s*\n.*?(?=^## |\Z)"
-                if re.search(pattern, text, re.M | re.S):
-                    text = re.sub(pattern, section, text, count=1, flags=re.M | re.S)
-                else:
-                    text = text.rstrip() + "\n\n" + section
-            output = text.rstrip() + "\n"
-        else:
-            lines = ["---", f"date: {day}", "type: bjj-training-journal", "tags: [bjj, training]", "---", "", f"# BJJ training — {day}", ""]
-            for title, value in values.items():
-                lines.extend([f"## {title}", "", value, ""])
-            output = "\n".join(lines)
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(output, encoding="utf-8")
-        temporary.replace(path)
-        result = {"path": str(path.relative_to(self.vault)), "date": day, "saved_at": _utc_now()}
+        with self.training_lock:
+            raw = path.read_bytes() if path.exists() else b""
+            current_revision = sha256(raw).hexdigest()
+            if revision != current_revision:
+                raise Conflict("This training note changed since you opened it. Copy your draft, then reload to review the latest note.")
+            if path.is_file():
+                text = raw.decode("utf-8")
+                for title, value in values.items():
+                    section = f"## {title}\n\n{value}\n\n"
+                    pattern = rf"^## {re.escape(title)}\s*\n.*?(?=^## |\Z)"
+                    if re.search(pattern, text, re.M | re.S):
+                        text = re.sub(pattern, section, text, count=1, flags=re.M | re.S)
+                    else:
+                        text = text.rstrip() + "\n\n" + section
+                output = text.rstrip() + "\n"
+            else:
+                lines = ["---", f"date: {day}", "type: bjj-training-journal", "tags: [bjj, training]", "---", "", f"# BJJ training — {day}", ""]
+                for title, value in values.items():
+                    lines.extend([f"## {title}", "", value, ""])
+                output = "\n".join(lines)
+            fd, temporary = tempfile.mkstemp(prefix=".bjj-training-", suffix=".tmp", dir=folder)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(output)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                latest_raw = path.read_bytes() if path.exists() else b""
+                if sha256(latest_raw).hexdigest() != revision:
+                    raise Conflict("The training note changed during saving. Your draft has not overwritten it.")
+                os.replace(temporary, path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            saved_revision = sha256(path.read_bytes()).hexdigest()
+        result = {"path": str(path.relative_to(self.vault)), "date": day, "saved_at": _utc_now(), "revision": saved_revision}
         try:
             self.refresh_journal(path, "bjj_training")
         except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
@@ -523,8 +546,9 @@ class BJJLibrary:
         path = self.vault / "BJJ" / "Journal" / f"{day}.md"
         values = {key: "" for key in ("rating", "general_notes", "session_goals", "problems", "worked")}
         if not path.is_file():
-            return {"date": day, **values}
-        text = path.read_text(encoding="utf-8")
+            return {"date": day, "revision": sha256(b"").hexdigest(), **values}
+        raw = path.read_bytes()
+        text = raw.decode("utf-8")
         fields = (("general_notes", "General Notes"), ("session_goals", "Session Goals"),
                   ("problems", "Problems encountered"), ("worked", "What worked"), ("rating", "Session rating"))
         for key, title in fields:
@@ -542,4 +566,4 @@ class BJJLibrary:
             match = re.search(r"^## Next practice focus\s*\n\s*(.*?)(?=^## |\Z)", text, re.M | re.S)
             if match:
                 values["session_goals"] = match.group(1).strip()
-        return {"date": day, "path": str(path.relative_to(self.vault)), **values}
+        return {"date": day, "path": str(path.relative_to(self.vault)), "revision": sha256(raw).hexdigest(), **values}
