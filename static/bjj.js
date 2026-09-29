@@ -3,19 +3,27 @@
   let library=null,current=null,segments=[],active=-1;
   const time=value=>`${Math.floor(Number(value||0)/60)}:${String(Math.floor(Number(value||0)%60)).padStart(2,'0')}`;
   const video=$('bjj-video'),holdRegion=$('bjj-speed-hold'),holdSpeed=$('bjj-hold-speed'),holdIndicator=$('bjj-speed-indicator');
-  let holdTimer=null,holding=false,previousRate=1;
+  const mobileHoldQuery=matchMedia('(max-width: 750px) and (pointer: coarse)');
+  let holdTimer=null,holdSource='',previousRate=1;
+  function updateHoldTarget(){holdRegion.style.pointerEvents=mobileHoldQuery.matches?'auto':'none';}
+  mobileHoldQuery.addEventListener?.('change',updateHoldTarget);updateHoldTarget();
   try{const saved=localStorage.getItem('bjj:hold-speed');if([...holdSpeed.options].some(option=>option.value===saved))holdSpeed.value=saved;}catch{}
   function updateHoldLabel(){holdIndicator.textContent=`${holdSpeed.value}×`;}
-  function finishSpeedHold(){clearTimeout(holdTimer);holdTimer=null;if(holding){video.playbackRate=previousRate;holding=false;holdRegion.classList.remove('active');}}
+  function beginSpeedHold(source){if(holdSource)return;previousRate=video.playbackRate;video.playbackRate=Number(holdSpeed.value);holdSource=source;holdRegion.classList.add('active');}
+  function finishSpeedHold(source=''){clearTimeout(holdTimer);holdTimer=null;if(holdSource&&(!source||holdSource===source)){video.playbackRate=previousRate;holdSource='';holdRegion.classList.remove('active');}}
   function armSpeedHold(event){
-    if(event.pointerType==='mouse'&&event.button!==0)return;
-    event.preventDefault();finishSpeedHold();holdRegion.setPointerCapture?.(event.pointerId);
-    holdTimer=setTimeout(()=>{previousRate=video.playbackRate;video.playbackRate=Number(holdSpeed.value);holding=true;holdRegion.classList.add('active');},180);
+    if(event.pointerType!=='touch'||!matchMedia('(max-width: 750px)').matches)return;
+    event.preventDefault();finishSpeedHold('pointer');holdRegion.setPointerCapture?.(event.pointerId);
+    holdTimer=setTimeout(()=>beginSpeedHold('pointer'),180);
   }
   holdRegion.addEventListener('pointerdown',armSpeedHold);
-  for(const name of ['pointerup','pointercancel','lostpointercapture'])holdRegion.addEventListener(name,finishSpeedHold);
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])holdRegion.addEventListener(name,()=>finishSpeedHold('pointer'));
   holdRegion.addEventListener('contextmenu',event=>event.preventDefault());
   holdSpeed.addEventListener('change',()=>{updateHoldLabel();try{localStorage.setItem('bjj:hold-speed',holdSpeed.value);}catch{}});updateHoldLabel();
+  function editableTarget(target){return target instanceof Element&&!!target.closest('input,textarea,select,[contenteditable=true]');}
+  document.addEventListener('keydown',event=>{if(event.key.toLowerCase()!=='f'||event.repeat||location.hash!=='#bjj'||editableTarget(event.target)||video.paused||video.ended)return;event.preventDefault();beginSpeedHold('keyboard');});
+  document.addEventListener('keyup',event=>{if(event.key.toLowerCase()==='f'&&holdSource==='keyboard'){event.preventDefault();finishSpeedHold('keyboard');}});
+  window.addEventListener('blur',()=>finishSpeedHold());
   async function request(url,options){const response=await fetch(url,options);let data;try{data=await response.json();}catch{data={error:'The BJJ service returned an invalid response.'};}if(!response.ok)throw Error(data.error||`Request failed (${response.status}).`);return data;}
   function message(text,error=false){$('bjj-status').textContent=text;$('bjj-status').className=error?'error':'';}
   function seek(seconds){const video=$('bjj-video');video.currentTime=Number(seconds)||0;video.play().catch(()=>{});$('bjj-player-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
@@ -28,7 +36,7 @@
   async function load(){try{library=await request('/api/bjj/library');renderLibrary();const select=$('bjj-filter-course');for(const course of library.courses)select.append(new Option(`${course.title} — ${course.instructor}`,course.id));loadNotes();message(library.courses.some(course=>course.complete)?'Your private library is ready.':'Library setup is in progress. Available volumes can be played now.');}catch(error){message(error.message,true);}}
   async function loadNotes(){const list=$('bjj-notes-list');try{const data=await request('/api/bjj/notes');list.replaceChildren();if(!data.notes.length){list.append(node('p','No notes saved yet.','small'));return;}for(const note of data.notes){const button=node('button',null,'bjj-result');button.type='button';button.append(node('strong',`${note.title} · ${time(note.timestamp)}`),node('span',note.path));button.addEventListener('click',()=>{const course=library.courses.find(c=>c.volumes.some(v=>v.id===note.media_id)),item=course?.volumes.find(v=>v.id===note.media_id);if(course&&item)openVolume(course,item,note.timestamp);});list.append(button);}}catch(error){list.textContent=error.message;}}
   video.addEventListener('timeupdate',()=>{if(!current)return;localStorage.setItem(`bjj:position:${current.item.id}`,String(video.currentTime));$('bjj-note-time').textContent=time(video.currentTime);let index=segments.findIndex(segment=>video.currentTime>=segment.start_seconds&&video.currentTime<segment.end_seconds);if(index!==active){document.querySelector(`.bjj-segment[data-index="${active}"]`)?.classList.remove('active');active=index;const row=document.querySelector(`.bjj-segment[data-index="${active}"]`);row?.classList.add('active');if(row && !row.matches(':hover,:focus'))row.scrollIntoView({block:'nearest'});$('bjj-note-excerpt').textContent=index>=0?(segments[index].corrected_text||segments[index].raw_text||''):'';}});
-  video.addEventListener('emptied',finishSpeedHold);
+  for(const name of ['pause','ended','emptied'])video.addEventListener(name,()=>finishSpeedHold());
   $('bjj-chapters').addEventListener('change',event=>seek(event.target.value));
   $('bjj-search-form').addEventListener('submit',async event=>{event.preventDefault();const results=$('bjj-search-results');results.textContent='Searching…';try{const params=new URLSearchParams({q:$('bjj-query').value});if($('bjj-search-mode').value==='semantic')params.set('semantic','1');for(const [field,id] of [['course','bjj-filter-course'],['volume','bjj-filter-volume'],['chapter','bjj-filter-chapter']])if($(id).value)params.set(field,$(id).value);const data=await request(`/api/bjj/search?${params}`);results.replaceChildren();if(!data.results.length){results.append(node('p','No matching transcript passages.','small'));return;}for(const result of data.results){const button=node('button',null,'bjj-result');button.type='button';button.append(node('strong',`${result.instructor} · Volume ${result.volume} · ${time(result.start_seconds)}`),node('span',result.excerpt));button.addEventListener('click',()=>{const course=library.courses.find(c=>c.id===result.course_id),item=course?.volumes.find(v=>v.id===result.media_id);if(course&&item)openVolume(course,item,result.start_seconds);});results.append(button);}}catch(error){results.textContent=error.message;}});
   $('bjj-note-form').addEventListener('submit',async event=>{event.preventDefault();if(!current)return;const video=$('bjj-video'),status=$('bjj-note-status');status.textContent='Saving…';try{const data=await request('/api/bjj/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_id:current.item.id,timestamp:video.currentTime,excerpt:$('bjj-note-excerpt').textContent,text:$('bjj-note-text').value,tags:$('bjj-note-tags').value.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)})});$('bjj-note-text').value='';status.textContent=`Saved to ${data.path}.`;loadNotes();}catch(error){status.textContent=error.message;}});
