@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import prepare_bjj
 from app import make_server
-from bjj import BJJLibrary
+from bjj import BJJLibrary, default_ai_secret_path
 from chapter_ai import OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION
 from embeddings import EmbeddingUnavailable, HashEmbedder
 from journal import Conflict
@@ -161,6 +161,14 @@ class BJJTests(unittest.TestCase):
         self.assertNotIn("openai_api_key", status)
         with self.assertRaisesRegex(ValueError, "format is invalid"):
             self.library.save_ai_credentials({"typesafe_api_key": "short"})
+
+    def test_ai_credentials_default_outside_library_and_checkout(self):
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(Path(self.temporary.name) / "local-app-data")}):
+            secret_path = default_ai_secret_path().resolve()
+            library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder())
+        self.assertEqual(library.ai_secret_path, secret_path)
+        self.assertFalse(secret_path.is_relative_to(self.root.resolve()))
+        self.assertFalse(secret_path.is_relative_to(Path(__file__).parents[1].resolve()))
 
     def test_hybrid_index_includes_training_but_excludes_personal_journals(self):
         personal = self.vault / "Journal"

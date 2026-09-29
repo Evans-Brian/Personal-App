@@ -38,6 +38,12 @@ SEARCH_STOP_WORDS = {
 INDEX_SOURCE_TYPES = ("bjj_transcript", "bjj_training", "bjj_note")
 
 
+def default_ai_secret_path():
+    base = os.environ.get("LOCALAPPDATA")
+    local_app_data = Path(base) if base else Path.home() / "AppData" / "Local"
+    return local_app_data / "A Little Room" / "bjj-library" / "ai-secrets.bin"
+
+
 def _utc_now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -91,14 +97,14 @@ def _text_windows(text, target_words=160, overlap_words=30):
 
 
 class BJJLibrary:
-    def __init__(self, root, vault, embedder=None, reranker=None):
+    def __init__(self, root, vault, embedder=None, reranker=None, ai_secret_path=None):
         self.root = Path(root).resolve()
         self.vault = Path(vault).resolve()
         self.media_root = self.root / "media"
         self.transcript_root = self.root / "transcripts"
         self.index_path = self.root / "index" / "bjj.sqlite3"
         self.summary_path = self.root / "work" / "chapter-summaries.json"
-        self.ai_secret_path = self.root / "work" / "ai-secrets.bin"
+        self.ai_secret_path = Path(ai_secret_path or default_ai_secret_path()).resolve()
         self.manifest_path = self.root / "manifest.json"
         self.embedder = embedder or LocalBGEEmbedder()
         self.ai_secrets = SecretStore(self.ai_secret_path)
