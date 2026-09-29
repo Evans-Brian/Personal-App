@@ -255,7 +255,7 @@ class BJJLibrary:
         missing_summaries = [document["id"] for document in transcript_documents if not document.get("summary")]
         if require_summaries and missing_summaries:
             raise RuntimeError(
-                f"{len(missing_summaries)} chapters are missing AI summaries. Run setup_chapter_search.py with OPENAI_API_KEY set."
+                f"{len(missing_summaries)} chapters are missing AI summaries. Save an OpenAI key locally or set OPENAI_API_KEY, then run setup_chapter_search.py."
             )
         vectors, embedding_model = self._embed_documents(documents)
         with closing(self.connect()) as connection:

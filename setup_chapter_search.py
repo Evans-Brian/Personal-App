@@ -76,7 +76,7 @@ def main():
     library = BJJLibrary(bjj_root, vault)
     summarizer = OpenAIChapterSummarizer(api_key=library.openai_api_key())
     if not summarizer.available:
-        raise SystemExit("Set OPENAI_API_KEY before generating chapter summaries.")
+        raise SystemExit("Save an OpenAI key locally or set OPENAI_API_KEY before generating chapter summaries.")
     if not args.skip_embedding_install:
         install_embeddings()
     result = generate_summaries(library, summarizer)

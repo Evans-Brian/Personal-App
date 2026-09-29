@@ -120,7 +120,7 @@ class OpenAIChapterSummarizer:
 
     def summarize(self, title, transcript):
         if not self.available:
-            raise AIServiceUnavailable("Set OPENAI_API_KEY before generating chapter summaries.")
+            raise AIServiceUnavailable("Save an OpenAI key locally or set OPENAI_API_KEY before generating chapter summaries.")
         payload = {
             "model": self.model,
             "store": False,
