@@ -110,7 +110,10 @@ function content() {
   return (period==='morning'?'<!-- carry-review: '+encodeURIComponent(JSON.stringify(carryChoices))+' -->\n':'')+prefix+parts.map((p,i)=>{
     const answer=period==='morning' && (i===1 || i===2)?[...document.querySelectorAll(`[id^="${i===2?'optional':'plan'}-"].plan-input`)].map(field=>field.value.trim()).filter(Boolean).map(s=>`- ${s}`).join('\n'):el(`answer-${i}`).value.trim();
     return `### ${p.title}\n\n${answer}\n\n`;
-  }).join('')+(period==='evening'?JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value}):'');
+  }).join('')+(period==='evening'?JournalPlans.serializeHabits({
+    phone_game_before_morning_work:el('phone-game-before-morning-work').checked,
+    phone_game_before_afternoon_work:el('phone-game-before-afternoon-work').checked
+  })+JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value}):'');
 }
 function showEditor(text, preferGuided=true) {
   // Refresh only an entirely blank old template; never relabel existing answers.
@@ -250,7 +253,7 @@ function showEditor(text, preferGuided=true) {
         reviewTasks.push({text,original:text,done:false,followup:crypto.randomUUID(),parent:original});
         const parsed=JournalPlans.split(current);
         const ratings=`### Daily ratings\n\nGood day: ${parsed.ratings.good || 'unrated'}\nProductive day: ${parsed.ratings.productive || 'unrated'}\n\n`;
-        showEditor(JournalPlans.serialize(reviewTasks)+ratings+parsed.body+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
+        showEditor(JournalPlans.serialize(reviewTasks)+ratings+parsed.body+JournalPlans.serializeHabits(JournalPlans.habits(current).value)+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
         status('Follow-up added. Save your evening entry to keep it and include it in the next carry-forward review.');
       });tools.append(add);row.append(tools);
 
@@ -270,7 +273,7 @@ function showEditor(text, preferGuided=true) {
         if(parsed.tasks.some(task=>task.text.toLowerCase()===taskText.toLowerCase())){status('That task is already in this checklist.',true);return;}
         parsed.tasks.push({text:taskText,original:taskText,done:false,eveningAdded:true});
         const ratings=`### Daily ratings\n\nGood day: ${parsed.ratings.good || 'unrated'}\nProductive day: ${parsed.ratings.productive || 'unrated'}\n\n`;
-        showEditor(JournalPlans.serialize(parsed.tasks)+ratings+parsed.body+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
+        showEditor(JournalPlans.serialize(parsed.tasks)+ratings+parsed.body+JournalPlans.serializeHabits(JournalPlans.habits(current).value)+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
         status('Task added. Check it off if done, then save your evening entry. Unfinished tasks will be offered in carry-forward.');
       };
       button.addEventListener('click',addTask);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addTask();}});
@@ -324,6 +327,20 @@ function showEditor(text, preferGuided=true) {
     answer.setAttribute('aria-describedby',hint.id); answer.addEventListener('input',changed);
     group.append(label,hint,answer); (extras || el('guided')).append(group);
   });
+  if(guided && period==='evening'){
+    const value=JournalPlans.habits(text).value;
+    const box=document.createElement('section');box.className='prompt';
+    const title=document.createElement('h3');title.textContent='Phone and game time';box.append(title);
+    for(const [id,key,labelText] of [
+      ['phone-game-before-morning-work','phone_game_before_morning_work','Phone/Game Time Before Morning Work'],
+      ['phone-game-before-afternoon-work','phone_game_before_afternoon_work','Phone/Game Time Before Afternoon Work']
+    ]){
+      const label=document.createElement('label');label.className='plan-check';
+      const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id=id;checkbox.checked=value[key]===true;
+      checkbox.addEventListener('change',changed);label.append(checkbox,document.createTextNode(labelText));box.append(label);
+    }
+    el('guided').append(box);
+  }
   if(guided && period==='evening'){
     const value=JournalPlans.jo(text).value;
     const box=document.createElement('section');box.className='prompt';

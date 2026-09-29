@@ -222,6 +222,7 @@ class Journal:
                     body = record['markdown'][start:end] if start is not None else ''
                     answer = re.sub(r'^#{3,6} .*$', '', body, flags=re.M).strip()
                     answer = re.sub(r'^<!-- evening-jo: .*? -->\r?\n?', '', answer, flags=re.M).strip()
+                    answer = re.sub(r'^<!-- evening-habits: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- carry-review: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Productive day): unrated)\r?$', '', answer, flags=re.M).strip()
                     statuses[period] = 'written' if answer else ('blank' if start is not None else 'missing')

@@ -4,6 +4,7 @@ demo-vault/
 *.sqlite3*
 .venv/
 config.local.json
+PRIVATE_CONTEXT.md
 .qa-vault/
 .qa-data/
 *.db
