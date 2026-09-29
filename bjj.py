@@ -268,14 +268,29 @@ class BJJLibrary:
         path = folder / f"{day}.md"
         fields = (("general_notes", "General Notes"), ("session_goals", "Session Goals"),
                   ("problems", "Problems encountered"), ("worked", "What worked"))
-        lines = ["---", f"date: {day}", "type: bjj-training-journal", "tags: [bjj, training]", "---", "", f"# BJJ training — {day}", ""]
+        values = {}
         for key, title in fields:
             value = str(data.get(key) or "").strip()
             if len(value) > 20_000:
                 raise ValueError("Training journal field is too long.")
-            lines.extend([f"## {title}", "", value, ""])
+            values[title] = value
+        if path.is_file():
+            text = path.read_text(encoding="utf-8")
+            for title, value in values.items():
+                section = f"## {title}\n\n{value}\n\n"
+                pattern = rf"^## {re.escape(title)}\s*\n.*?(?=^## |\Z)"
+                if re.search(pattern, text, re.M | re.S):
+                    text = re.sub(pattern, section, text, count=1, flags=re.M | re.S)
+                else:
+                    text = text.rstrip() + "\n\n" + section
+            output = text.rstrip() + "\n"
+        else:
+            lines = ["---", f"date: {day}", "type: bjj-training-journal", "tags: [bjj, training]", "---", "", f"# BJJ training — {day}", ""]
+            for title, value in values.items():
+                lines.extend([f"## {title}", "", value, ""])
+            output = "\n".join(lines)
         temporary = path.with_suffix(".tmp")
-        temporary.write_text("\n".join(lines), encoding="utf-8")
+        temporary.write_text(output, encoding="utf-8")
         temporary.replace(path)
         return {"path": str(path.relative_to(self.vault)), "date": day, "saved_at": _utc_now()}
 

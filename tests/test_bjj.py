@@ -75,6 +75,24 @@ class BJJTests(unittest.TestCase):
         self.assertEqual(loaded["session_goals"], "Frames")
         self.assertEqual((loaded["problems"], loaded["worked"]), ("Posture", "Timing"))
 
+    def test_training_save_preserves_unmanaged_markdown(self):
+        folder = self.vault / "BJJ" / "Journal"
+        folder.mkdir(parents=True)
+        path = folder / "2026-09-28.md"
+        path.write_text(
+            "---\ncustom: keep\n---\n\n# Existing title\n\nIntro stays.\n\n"
+            "## General Notes\n\nOld notes\n\n## Private review\n\nDo not overwrite\n",
+            encoding="utf-8",
+        )
+        self.library.save_training({"date": "2026-09-28", "general_notes": "New notes", "session_goals": "Frames"})
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("custom: keep", text)
+        self.assertIn("Intro stays.", text)
+        self.assertIn("## Private review\n\nDo not overwrite", text)
+        self.assertIn("## General Notes\n\nNew notes", text)
+        self.assertIn("## Session Goals\n\nFrames", text)
+        self.assertNotIn("Old notes", text)
+
     def test_study_notes_do_not_collide_with_same_clock_tick(self):
         class FixedDatetime(datetime):
             @classmethod
