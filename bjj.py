@@ -275,7 +275,24 @@ class BJJLibrary:
             if not course:
                 continue
             segments = self.transcript(item["id"])["segments"]
-            chapters = {chapter.get("id"): chapter.get("title", chapter.get("id")) for chapter in item.get("chapters", [])}
+            chapters = {}
+            official_chapters = sorted(
+                (chapter for chapter in item.get("chapters", []) if chapter.get("id") is not None),
+                key=lambda chapter: float(chapter.get("start_seconds", 0)),
+            )
+            duration = float(item.get("duration_seconds") or 0)
+            for index, chapter in enumerate(official_chapters):
+                chapter_id = chapter.get("id")
+                next_chapter = official_chapters[index + 1] if index + 1 < len(official_chapters) else None
+                start = float(chapter.get("start_seconds", 0))
+                end = float(next_chapter.get("start_seconds", 0)) if next_chapter else None
+                if end is None and duration > start:
+                    end = duration
+                chapters[chapter_id] = {
+                    "title": chapter.get("title", chapter_id),
+                    "start_seconds": start,
+                    **({"end_seconds": end} if end is not None and end > start else {}),
+                }
             groups = []
             for segment in segments:
                 chapter_id = segment.get("chapter_id") or "Unchaptered"
@@ -289,7 +306,8 @@ class BJJLibrary:
                 ).strip()
                 if not content:
                     continue
-                title = chapters.get(chapter_id, str(chapter_id))
+                chapter_bounds = chapters.get(chapter_id, {})
+                title = chapter_bounds.get("title", str(chapter_id))
                 identifier = f"{item['id']}:{chapter_id}"
                 summary_entry = summaries.get(identifier, {})
                 digest = sha256(content.encode("utf-8")).hexdigest()
@@ -302,7 +320,8 @@ class BJJLibrary:
                 documents.append({
                     "id": identifier, "media_id": item["id"], "course_id": item["course_id"],
                     "instructor": course["instructor"], "volume": int(item["volume"]), "chapter": str(chapter_id),
-                    "start_seconds": float(group[0]["start_seconds"]), "end_seconds": float(group[-1]["end_seconds"]),
+                    "start_seconds": float(chapter_bounds.get("start_seconds", group[0]["start_seconds"])),
+                    "end_seconds": float(chapter_bounds.get("end_seconds", group[-1]["end_seconds"])),
                     "excerpt": display, "content": content, "summary": summary, "search_text": content,
                     "media_sha256": item.get("sha256", ""), "source_type": "bjj_transcript",
                     "source_path": item.get("transcript", ""), "journal_date": "", "section": title,

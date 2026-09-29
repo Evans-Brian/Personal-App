@@ -76,7 +76,7 @@ class BJJTests(unittest.TestCase):
     def test_transcripts_are_indexed_as_one_document_per_chapter(self):
         path = self.root / self.entry["transcript"]
         path.write_text(json.dumps({"segments": [
-            {"segment_id": 0, "start_seconds": 0, "end_seconds": 2, "corrected_text": "First detail.", "chapter_id": "intro"},
+            {"segment_id": 0, "start_seconds": 0.5, "end_seconds": 2, "corrected_text": "First detail.", "chapter_id": "intro"},
             {"segment_id": 1, "start_seconds": 2, "end_seconds": 4, "corrected_text": "Second detail.", "chapter_id": "intro"},
             {"segment_id": 2, "start_seconds": 4, "end_seconds": 8, "corrected_text": "Next technique.", "chapter_id": "finish"},
         ]}), encoding="utf-8")
@@ -93,6 +93,7 @@ class BJJTests(unittest.TestCase):
             connection.close()
         self.assertEqual((rows[0]["chapter"], rows[0]["start_seconds"], rows[0]["end_seconds"]), ("intro", 0, 4))
         self.assertEqual(rows[0]["content"], "First detail. Second detail.")
+        self.assertEqual((rows[1]["chapter"], rows[1]["start_seconds"], rows[1]["end_seconds"]), ("finish", 4, 10))
 
     def test_valid_summary_is_embedded_and_shown_but_full_transcript_stays_searchable(self):
         path = self.root / self.entry["transcript"]
