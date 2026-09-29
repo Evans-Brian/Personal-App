@@ -101,6 +101,8 @@ class BJJTests(unittest.TestCase):
         self.library.rebuild_index()
         with self.assertRaisesRegex(ValueError, "Cannot index"):
             self.library.refresh_journal(path, "general_journal")
+        with self.assertRaisesRegex(ValueError, "Cannot index"):
+            self.library.refresh_journal(path, "bjj_training")
         self.assertEqual(self.library.search("private personal reflection", source="all"), [])
 
     def test_existing_personal_journal_rows_are_purged_on_connect(self):

@@ -73,7 +73,6 @@
     }
     document.title=page==='journal'?'A little room — Journal':page[0].toUpperCase()+page.slice(1)+' — A little room';
   }
-  if(!location.hash && matchMedia('(max-width: 750px)').matches)history.replaceState(null,'','#bjj');
   window.addEventListener('hashchange',navigate);navigate();
   $('add-restaurant-form').addEventListener('submit',event=>{event.preventDefault();if(!ready || saving)return;
     const input=$('restaurant-name');if(!input.value.trim())return;

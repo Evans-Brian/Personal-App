@@ -334,7 +334,12 @@ class BJJLibrary:
     def refresh_journal(self, path, source_type="bjj_training"):
         """Refresh one saved Markdown file without rebuilding every transcript."""
         path = Path(path).resolve()
-        if source_type not in {"bjj_training", "bjj_note"} or not path.is_relative_to(self.vault):
+        allowed_roots = {
+            "bjj_training": self.vault / "BJJ" / "Journal",
+            "bjj_note": self.vault / "BJJ" / "Study Notes",
+        }
+        root = allowed_roots.get(source_type)
+        if root is None or not path.is_relative_to(root.resolve()):
             raise ValueError("Cannot index that journal path.")
         if not self.index_path.is_file():
             return {"indexed": 0, "skipped": True}
