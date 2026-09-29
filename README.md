@@ -26,7 +26,7 @@ Optional: `--port 8766` or `--database "C:\path\outside-vault\oura.sqlite3"`.
 
 For a persistent vault choice, set `{"vault": "C:\\Obsidian-Personal"}` in `config.local.json` next to `app.py`. This file is ignored by Git. The folder must already exist; `--vault` overrides this setting for one launch.
 
-The BJJ tab reads a private local instructional library from the `bjj_library` path in `config.local.json`; this computer uses `C:\BJJ-Library`. The manual override is `--bjj-library "C:\BJJ-Library"`. Media, transcripts, indexes, model files, work state, and vault notes stay outside Git.
+The BJJ tab reads a private local instructional library from the `bjj_library` path in `config.local.json`. The manual override is `--bjj-library "C:\path\to\your\BJJLibrary"`. Media, transcripts, indexes, model files, work state, and vault notes stay outside Git.
 
 ## Files and responsibilities
 
@@ -87,7 +87,7 @@ The private search index includes journal text for local retrieval, but not Oura
 
 The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, hybrid related-idea search, exact FTS5 search, timestamped study notes, and a daily training journal. Search can target instructionals, the BJJ training journal, the personal journal, or all three. Related ideas is the default and combines BGE semantic retrieval with a smaller exact-term boost; Exact terms remains available separately. Results retain their source path, date, section, and video timestamp so they link back to the original material.
 
-Run `python setup_embeddings.py` once after configuring the vault and BJJ library. It installs FastEmbed/ONNX and caches `BAAI/bge-small-en-v1.5` locally, then rebuilds the SQLite index with 384-dimensional float vectors. If the checkout has no `config.local.json`, pass `--bjj-library "C:\BJJ-Library" --vault "C:\Obsidian-Personal"`. Runtime inference is offline-only. The index uses approximately 160-word overlapping chunks without crossing transcript chapters, records its model/version, and refreshes an affected journal file after each app save. Exact FTS5 search continues working if the optional model is unavailable.
+Run `python setup_embeddings.py` once after configuring the vault and BJJ library. It installs FastEmbed/ONNX and caches `BAAI/bge-small-en-v1.5` locally, then rebuilds the SQLite index with 384-dimensional float vectors. If the checkout has no `config.local.json`, pass `--bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`. Runtime inference is offline-only. The index uses approximately 160-word overlapping chunks without crossing transcript chapters, records its model/version, and refreshes an affected journal file after each app save. Exact FTS5 search continues working if the optional model is unavailable.
 
 While a video is playing, hold the right side on a phone or hold `F` on desktop to temporarily speed playback; desktop mouse clicks are left to the native video player. The player's ellipsis menu configures the temporary speed for both controls. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal` and contain General Notes, Session Goals, Problems encountered, What worked, and an optional 1-5 session rating.
 
@@ -95,12 +95,12 @@ Set both vault and library paths in the ignored `config.local.json`:
 
 ```json
 {
-  "vault": "C:\\Obsidian-Personal",
-  "bjj_library": "C:\\BJJ-Library"
+  "vault": "C:\\path\\to\\your\\ObsidianVault",
+  "bjj_library": "C:\\path\\to\\your\\BJJLibrary"
 }
 ```
 
-`C:\BJJ-Library\manifest.json` is the library source of truth. It points to the ignored local media, transcript, and index files. Use `BJJ_IMPLEMENTATION_PLAN.md` for the private acquisition, verification, transcription, and rebuild procedure.
+The library's `manifest.json` is the source of truth. It points to the ignored local media, transcript, and index files. Use `BJJ_IMPLEMENTATION_PLAN.md` for the private acquisition, verification, transcription, and rebuild procedure.
 
 Run `python eval_bjj_search.py` to compare the retained 192-dimensional feature-hash baseline, BGE, and hybrid ranking on the checked-in paraphrase/transcription-noise evaluation set. The fixture contains synthetic text only; it never reads or prints private journal content.
 
@@ -170,7 +170,7 @@ After saving an evening cooldown, **Submit** puts the unchecked task away from t
 ## Private access from other devices
 The app can stay bound to localhost behind Tailscale Serve. Install Tailscale on each device and sign in to the same personal account. Use `tailscale serve --bg http://127.0.0.1:8765` for private HTTPS; do not enable Funnel. In the ignored `config.local.json`, `remote_access` contains `origin` (the exact HTTPS ts.net address, no trailing slash) and `login` (the authorized Tailscale account). Restart the journal after configuration. Requests must match the configured account identity supplied by Serve and the exact origin. Keep the backend bound to loopback; never expose it directly or trust identity headers from an untrusted proxy.
 
-On iPhone, install Tailscale, connect, then open the private address in Safari and use Share → Add to Home Screen. Phone-sized first visits open the BJJ page; use the navigation to switch back to Journal. The host PC must remain powered on and awake. The journal's scheduled task currently starts at Windows sign-in, so sign into Windows after a reboot. Tailscale runs unattended; Serve persists in the background. Oura reconnect/setup still uses the host PC's localhost callback, so perform that on the host; synced stats are available remotely. Browser drafts are separate for each device and URL; save before switching devices. To disable private sharing: `tailscale serve --https=443 off`.
+On iPhone, install Tailscale, connect, then open the private address in Safari and use Share → Add to Home Screen. The host PC must remain powered on and awake. The journal's scheduled task currently starts at Windows sign-in, so sign into Windows after a reboot. Tailscale runs unattended; Serve persists in the background. Oura reconnect/setup still uses the host PC's localhost callback, so perform that on the host; synced stats are available remotely. Browser drafts are separate for each device and URL; save before switching devices. To disable private sharing: `tailscale serve --https=443 off`.
 
 ## Local voice dictation
 Run `python setup_voice.py` once on the hosting PC to install faster-whisper and download the English base model into ignored `data/` folders. No paid API or API key is used. The model loads lazily on the CPU and remains in memory until the app exits. Audio is processed in memory and is never written into journal files or audio logs.
