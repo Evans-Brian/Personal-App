@@ -66,7 +66,7 @@ Past entries lists saved daily files newest first. Morning/evening indicators sh
 3. On your phone, use Obsidian Sync to connect to that same remote vault.
 4. Keep desktop Obsidian running so its Sync plugin can detect local edits. Write or edit the Markdown on your phone in Obsidian.
 
-The custom browser app runs on your computer only. Phone access uses Obsidian, not this web interface. Sync is configured in Obsidian and requires its subscription; the app does not implement a second sync layer. See [Obsidian's setup instructions](https://obsidian.md/help/sync/setup).
+This Obsidian Sync workflow edits notes on your phone outside the web interface. For private browser access from other devices, including the mobile BJJ view, see [Private access from other devices](#private-access-from-other-devices). Sync is configured in Obsidian and requires its subscription; the app does not implement a second sync layer. See [Obsidian's setup instructions](https://obsidian.md/help/sync/setup).
 
 Save checks the file revision and writes via a temporary file and atomic replacement. Stale edits are rejected. An external editor or sync process can still race in the tiny interval between the final check and replacement; this is not a distributed locking system. Avoid simultaneous edits to one note across devices, let Sync finish, and retain backups/version history.
 
