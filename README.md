@@ -26,11 +26,17 @@ Optional: `--port 8766` or `--database "C:\path\outside-vault\oura.sqlite3"`.
 
 For a persistent vault choice, set `{"vault": "C:\\Obsidian-Personal"}` in `config.local.json` next to `app.py`. This file is ignored by Git. The folder must already exist; `--vault` overrides this setting for one launch.
 
+The BJJ tab reads a private local instructional library from the `bjj_library` path in `config.local.json`; this computer uses `C:\BJJ-Library`. The manual override is `--bjj-library "C:\BJJ-Library"`. Media, transcripts, indexes, model files, work state, and vault notes stay outside Git.
+
 ## Files and responsibilities
 
 ```text
 journal-app/
   app.py                 Loopback-only server and JSON endpoints
+  bjj.py                 Private BJJ library, transcript search, notes, and journals
+  prepare_bjj.py         Local BJJ media validation and manifest generation
+  transcribe_bjj.py      Restart-safe local BJJ transcription and indexing
+  official_chapters.py   BJJ Fanatics chapter starts used by the manifest
   journal.py             Daily Markdown read/update and date-range reads
   oura.py                Separate SQLite schema, upsert, and range reads
   oura_sync.py           OAuth, rotating refresh tokens, hourly daily-summary imports
@@ -72,7 +78,22 @@ After authorization the background worker imports the past 90 days, then checks 
 
 The panel shows daily sleep, readiness, and activity scores plus steps for the selected journal date. Missing values display a dash rather than zero. Raw daily summaries are stored in SQLite by `(kind, id)`, with date and import timestamp, so repeat imports update instead of duplicating records. Disconnect deletes local tokens and stops future fetches, retaining imported history; revoke authorization in your Oura account if desired. Detailed sleep periods are also imported, including sleep duration, stages, efficiency, bedtime/wake time, average HRV, lowest and average sleeping heart rate, and breathing rate. The expandable sleep panel shows each period separately on its Oura-assigned day, using recorded local times. Durations are converted from seconds and rounded to minutes; missing readings stay blank rather than becoming zero. Raw sleep payloads remain in SQLite for later queries. Continuous daytime heart-rate data is not fetched. Existing connections get a one-time 90-day sleep backfill, followed by the normal 30-day refresh window.
 
-For a later AI feature, use `Journal.read_range(start, end)` and `OuraStore.read_range(start, end)` to gather selected dates directly. Add a preview of exactly what will be sent and an explicit send action before any model integration. There is no indexing or RAG.
+For a later AI feature, use `Journal.read_range(start, end)` and `OuraStore.read_range(start, end)` to gather selected dates directly. Add a preview of exactly what will be sent and an explicit send action before any model integration. There is no journal or Oura indexing/RAG.
+
+## BJJ library
+
+The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, exact transcript search, related-idea search, timestamped study notes, and a daily training journal. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal`.
+
+Set both vault and library paths in the ignored `config.local.json`:
+
+```json
+{
+  "vault": "C:\\Obsidian-Personal",
+  "bjj_library": "C:\\BJJ-Library"
+}
+```
+
+`C:\BJJ-Library\manifest.json` is the library source of truth. It points to the ignored local media, transcript, and index files. Use `BJJ_IMPLEMENTATION_PLAN.md` for the private acquisition, verification, transcription, and rebuild procedure.
 
 ## Verify
 
