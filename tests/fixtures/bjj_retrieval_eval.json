@@ -7,7 +7,7 @@
     {"id": "shotgun_grip", "text": "The shotgun grip joins both hands around the leg so the knee cannot retract while you expose the heel."},
     {"id": "training_underhook", "text": "Training journal: I kept getting squashed after the speech recognizer wrote under cook. I need an inside frame and better elbow position."},
     {"id": "training_energy", "text": "Training journal: My timing and decision making deteriorated because I arrived exhausted after sleeping badly."},
-    {"id": "journal_confidence", "text": "Personal journal: I hesitated to start because I was worried about making a mistake, but taking one small action restored momentum."},
+    {"id": "training_confidence", "text": "Training journal: I hesitated to initiate the sweep because I was worried about making a mistake, but committing to one grip sequence restored momentum."},
     {"id": "front_headlock", "text": "Keep your shoulder heavy over the back of the neck and block the near arm before circling behind from front headlock."},
     {"id": "side_control_escape", "text": "Against side control, connect your elbow and knee, create a frame at the hip, bridge to make space, and recover guard."}
   ],
@@ -16,7 +16,7 @@
     {"text": "I feel crushed because I keep losing inside position with my arm", "relevant": ["half_guard_flattened", "training_underhook"]},
     {"text": "How do I prevent the leg from escaping while attacking the heel?", "relevant": ["shotgun_grip"]},
     {"text": "Why was my sparring judgment poor when I was tired?", "relevant": ["training_energy"]},
-    {"text": "Find times when fear of failure stopped me beginning", "relevant": ["journal_confidence"]},
+    {"text": "Find training notes where fear of failure stopped me initiating", "relevant": ["training_confidence"]},
     {"text": "How can I get behind someone from a seated guard?", "relevant": ["octopus_hip"]},
     {"text": "I need to make room and bring my knee back in from bottom", "relevant": ["side_control_escape"]},
     {"text": "How should I shift their balance before attempting a sweep?", "relevant": ["butterfly_off_balance"]}

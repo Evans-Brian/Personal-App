@@ -10,6 +10,10 @@ _model = None
 MAX_BYTES = 12 * 1024 * 1024
 
 
+class VoiceUnavailable(RuntimeError):
+    """The optional local transcription runtime has not been installed correctly."""
+
+
 def transcribe(audio):
     global _model
     if not audio or len(audio) > MAX_BYTES:
@@ -17,13 +21,20 @@ def transcribe(audio):
     if not _lock.acquire(blocking=False):
         raise ValueError('Another recording is being transcribed. Try again in a moment.')
     try:
-        runtime = str(ROOT / 'data' / 'voice-runtime')
+        runtime_path = ROOT / 'data' / 'voice-runtime'
+        model_path = ROOT / 'data' / 'voice-model'
+        if not (runtime_path / 'faster_whisper').is_dir() or not (model_path / 'model.bin').is_file():
+            raise VoiceUnavailable('Local dictation is not installed. Run `python setup_voice.py`, then restart the app.')
+        runtime = str(runtime_path)
         if runtime not in sys.path:
             sys.path.insert(0, runtime)
-        from faster_whisper import WhisperModel
-        from faster_whisper.audio import decode_audio
+        try:
+            from faster_whisper import WhisperModel
+            from faster_whisper.audio import decode_audio
+        except (ImportError, OSError) as exc:
+            raise VoiceUnavailable('Local dictation could not load. Run `python setup_voice.py`, then restart the app.') from exc
         if _model is None:
-            _model = WhisperModel(str(ROOT / 'data' / 'voice-model'), device='cpu', compute_type='int8', cpu_threads=4, local_files_only=True)
+            _model = WhisperModel(str(model_path), device='cpu', compute_type='int8', cpu_threads=4, local_files_only=True)
         waveform = decode_audio(io.BytesIO(audio), sampling_rate=16000)
         if len(waveform) > 125 * 16000:
             raise ValueError('Please keep recordings under two minutes.')

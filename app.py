@@ -192,7 +192,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
             if self.path == '/api/transcribe':
                 if not self.allowed() or self.headers.get('Origin') is None:
                     return self.respond(403, {'error': 'Only requests from this app are accepted.'})
-                from voice import transcribe, MAX_BYTES
+                from voice import MAX_BYTES, VoiceUnavailable, transcribe
                 try:
                     length = int(self.headers.get('Content-Length', '0'))
                     if not 0 < length <= MAX_BYTES:
@@ -203,6 +203,8 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, {'text': transcribe(self.rfile.read(length))})
                 except ValueError as exc:
                     return self.respond(400, {'error': str(exc)})
+                except VoiceUnavailable as exc:
+                    return self.respond(503, {'error': str(exc)})
                 except Exception:
                     return self.respond(503, {'error': 'Local transcription could not finish. Try recording again.'})
             if not self.allowed() or self.headers.get("Content-Type") != "application/json":
@@ -235,10 +237,6 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     sync.disconnect()
                     return self.respond(200, sync.status())
                 result = journal.save(data.get("date"), data.get("period"), data.get("content"), data.get("revision"))
-                try:
-                    bjj.refresh_journal(result["path"], "general_journal")
-                except (OSError, RuntimeError, ValueError) as exc:
-                    result["index_warning"] = str(exc)
                 self.respond(200, result)
             except Conflict as exc:
                 self.respond(409, {"error": str(exc)})

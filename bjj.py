@@ -22,6 +22,7 @@ SEARCH_STOP_WORDS = {
     "get", "how", "i", "in", "into", "is", "it", "me", "my", "of", "on", "or", "should", "that",
     "the", "their", "this", "to", "was", "what", "when", "while", "why", "with",
 }
+INDEX_SOURCE_TYPES = ("bjj_transcript", "bjj_training", "bjj_note")
 
 
 def _utc_now():
@@ -181,6 +182,15 @@ class BJJLibrary:
         for name, definition in migrations.items():
             if name not in columns:
                 connection.execute(f"ALTER TABLE chunks ADD COLUMN {name} {definition}")
+        deprecated = [row[0] for row in connection.execute(
+            "SELECT id FROM chunks WHERE source_type = ?", ("general_journal",)
+        )]
+        if deprecated:
+            connection.executemany("DELETE FROM chunks_fts WHERE id = ?", ((identifier,) for identifier in deprecated))
+            connection.execute("DELETE FROM chunks WHERE source_type = ?", ("general_journal",))
+            count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+            connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('chunks',?)", (str(count),))
+            connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('updated_at',?)", (_utc_now(),))
         connection.commit()
         return connection
 
@@ -194,7 +204,7 @@ class BJJLibrary:
                 connection.execute("DELETE FROM index_meta")
                 for document, vector in zip(documents, vectors):
                     self._insert_document(connection, document, vector, embedding_model)
-                metadata = {"schema_version": "2", "embedding_model": self.embedder.version,
+                metadata = {"schema_version": "3", "embedding_model": self.embedder.version,
                             "embedding_dimensions": str(self.embedder.dimensions), "chunks": str(len(documents)),
                             "built_at": _utc_now()}
                 if not embedding_model:
@@ -262,8 +272,7 @@ class BJJLibrary:
 
     def _vault_documents(self):
         documents = []
-        folders = ((self.vault / "Journal", "general_journal"),
-                   (self.vault / "BJJ" / "Journal", "bjj_training"),
+        folders = ((self.vault / "BJJ" / "Journal", "bjj_training"),
                    (self.vault / "BJJ" / "Study Notes", "bjj_note"))
         for folder, source_type in folders:
             if not folder.is_dir():
@@ -300,8 +309,7 @@ class BJJLibrary:
             if len(_words(excerpt)) < 3:
                 continue
             for part, window in enumerate(_text_windows(excerpt)):
-                context = {"general_journal": "Personal journal", "bjj_training": "BJJ training journal",
-                           "bjj_note": "BJJ study note"}[source_type]
+                context = {"bjj_training": "BJJ training journal", "bjj_note": "BJJ study note"}[source_type]
                 documents.append({
                     "id": f"{source_type}:{relative}:{position:03d}:{part:03d}", **note_metadata,
                     "chapter": title, "end_seconds": note_metadata["start_seconds"],
@@ -312,6 +320,8 @@ class BJJLibrary:
         return documents
 
     def _insert_document(self, connection, document, vector, embedding_model=None):
+        if document.get("source_type") not in INDEX_SOURCE_TYPES:
+            raise ValueError("Only BJJ material can be added to the BJJ search index.")
         columns = ("id", "media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
                    "excerpt", "media_sha256", "embedding", "source_type", "source_path", "journal_date", "section", "title", "embedding_model")
         values = [document.get(column, "") for column in columns]
@@ -321,10 +331,10 @@ class BJJLibrary:
         connection.execute("INSERT INTO chunks_fts(id,excerpt,chapter,instructor,course_id) VALUES (?,?,?,?,?)",
                            (document["id"], document["excerpt"], document["section"], document["instructor"], document["course_id"]))
 
-    def refresh_journal(self, path, source_type="general_journal"):
+    def refresh_journal(self, path, source_type="bjj_training"):
         """Refresh one saved Markdown file without rebuilding every transcript."""
         path = Path(path).resolve()
-        if source_type not in {"general_journal", "bjj_training", "bjj_note"} or not path.is_relative_to(self.vault):
+        if source_type not in {"bjj_training", "bjj_note"} or not path.is_relative_to(self.vault):
             raise ValueError("Cannot index that journal path.")
         if not self.index_path.is_file():
             return {"indexed": 0, "skipped": True}
@@ -352,13 +362,11 @@ class BJJLibrary:
         limit = min(max(int(limit), 1), 100)
         if not self.index_path.exists():
             return []
-        if source not in {"bjj", "training", "journal", "all"}:
+        if source not in {"bjj", "training", "all"}:
             raise ValueError("Unknown search source.")
         clauses, values = [], []
-        source_types = {"bjj": ("bjj_transcript",), "training": ("bjj_training",),
-                        "journal": ("general_journal",), "all": ()}[source]
-        if source_types:
-            clauses.append("c.source_type IN (" + ",".join("?" for _ in source_types) + ")"); values.extend(source_types)
+        source_types = {"bjj": ("bjj_transcript",), "training": ("bjj_training",), "all": INDEX_SOURCE_TYPES}[source]
+        clauses.append("c.source_type IN (" + ",".join("?" for _ in source_types) + ")"); values.extend(source_types)
         if course_id:
             clauses.append("c.course_id = ?"); values.append(course_id)
         if volume:

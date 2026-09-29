@@ -18,11 +18,11 @@ Canonical transcript JSON contains `segments`. Every segment records `course_id`
 
 4. Review the pilot at its beginning, middle, and end; finalize vocabulary and official chapter starts in the manifest.
 5. Run the remaining media IDs sequentially with `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --all`. The JSONL work file is appended segment by segment and a retry resumes after the last completed timestamp. Add `--cpu` for the clean int8 fallback.
-6. Install the local BGE runtime/model and rebuild the idempotent transcript-and-journal index:
+6. Install the local BGE runtime/model and rebuild the idempotent transcript-and-BJJ-notes index:
 
    `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`
 
-   Later transcript-only pipeline runs may still invoke `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --index`; the local embedding setup must already be present and the configured vault should be used when journals also need rebuilding.
+   Later transcript-only pipeline runs may still invoke `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --index`; the local embedding setup must already be present and the configured vault should be used when BJJ training journals and study notes also need rebuilding. Personal journal files are never ingested.
 
 7. Start the journal normally. `/api/bjj/media/<media-id>` supports private same-origin byte ranges; BJJ notes are Markdown under `BJJ/Study Notes` and daily training entries under `BJJ/Journal` in the configured vault.
 

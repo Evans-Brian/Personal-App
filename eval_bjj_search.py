@@ -1,4 +1,4 @@
-"""Repeatable local retrieval evaluation for the BJJ/journal search index."""
+"""Repeatable local retrieval evaluation for the BJJ search index."""
 from __future__ import annotations
 
 import argparse

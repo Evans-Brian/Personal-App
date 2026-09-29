@@ -1,5 +1,6 @@
 import http.client
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -58,7 +59,7 @@ class BJJTests(unittest.TestCase):
         self.assertEqual(exact[0]["media_id"], "octopus-guard-2-v01")
         self.assertEqual(self.library.search("octopus position", semantic=True)[0]["start_seconds"], 0)
 
-    def test_hybrid_index_includes_training_and_personal_journals(self):
+    def test_hybrid_index_includes_training_but_excludes_personal_journals(self):
         personal = self.vault / "Journal"
         training = self.vault / "BJJ" / "Journal"
         personal.mkdir(parents=True); training.mkdir(parents=True)
@@ -71,39 +72,62 @@ class BJJTests(unittest.TestCase):
             encoding="utf-8",
         )
         rebuilt = self.library.rebuild_index()
-        self.assertEqual(rebuilt["sources"]["general_journal"], 1)
+        self.assertNotIn("general_journal", rebuilt["sources"])
         self.assertEqual(rebuilt["sources"]["bjj_training"], 1)
-        result = self.library.search("overwhelmed", source="journal")[0]
-        self.assertEqual((result["source_type"], result["journal_date"]), ("general_journal", "2026-09-27"))
+        self.assertEqual(self.library.search("overwhelmed", source="all"), [])
+        with self.assertRaisesRegex(ValueError, "Unknown search source"):
+            self.library.search("overwhelmed", source="journal")
         sources = {item["source_type"] for item in self.library.search("underhook", semantic=True, source="all")}
         self.assertIn("bjj_training", sources)
+        self.assertNotIn("general_journal", sources)
 
-    def test_incremental_journal_refresh_replaces_saved_file_chunks(self):
-        folder = self.vault / "Journal"
+    def test_incremental_training_journal_refresh_replaces_saved_file_chunks(self):
+        folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True)
         path = folder / "2026-09-28.md"
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nFrames helped me stay calm.\n", encoding="utf-8")
         self.library.rebuild_index()
-        self.assertEqual(self.library.search("frames", source="journal")[0]["journal_date"], "2026-09-28")
+        self.assertEqual(self.library.search("frames", source="training")[0]["journal_date"], "2026-09-28")
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nPosture helped me stay balanced.\n", encoding="utf-8")
         self.assertFalse(self.library.refresh_journal(path)["skipped"])
-        self.assertEqual(self.library.search("frames", source="journal"), [])
-        self.assertEqual(self.library.search("posture", source="journal")[0]["journal_date"], "2026-09-28")
+        self.assertEqual(self.library.search("frames", source="training"), [])
+        self.assertEqual(self.library.search("posture", source="training")[0]["journal_date"], "2026-09-28")
+
+    def test_personal_journal_cannot_be_refreshed_into_bjj_index(self):
+        folder = self.vault / "Journal"
+        folder.mkdir(parents=True)
+        path = folder / "2026-09-28.md"
+        path.write_text("# Day\n\nPrivate personal reflection.\n", encoding="utf-8")
+        self.library.rebuild_index()
+        with self.assertRaisesRegex(ValueError, "Cannot index"):
+            self.library.refresh_journal(path, "general_journal")
+        self.assertEqual(self.library.search("private personal reflection", source="all"), [])
+
+    def test_existing_personal_journal_rows_are_purged_on_connect(self):
+        self.library.rebuild_index()
+        connection = sqlite3.connect(self.library.index_path)
+        connection.execute("UPDATE chunks SET source_type = 'general_journal'")
+        connection.commit()
+        connection.close()
+        connection = self.library.connect()
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0], 0)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0], 0)
+        connection.close()
 
     def test_exact_index_and_journal_refresh_do_not_require_embeddings(self):
         self.library = BJJLibrary(self.root, self.vault, embedder=UnavailableEmbedder())
-        folder = self.vault / "Journal"
+        folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True)
         path = folder / "2026-09-28.md"
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nFrames helped me stay calm.\n", encoding="utf-8")
         rebuilt = self.library.rebuild_index()
         self.assertEqual(rebuilt["embedding_model"], "")
         self.assertEqual(self.library.search("underhook")[0]["media_id"], "octopus-guard-2-v01")
-        self.assertEqual(self.library.search("frames", source="journal")[0]["journal_date"], "2026-09-28")
+        self.assertEqual(self.library.search("frames", source="training")[0]["journal_date"], "2026-09-28")
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nPosture helped me stay balanced.\n", encoding="utf-8")
         self.assertFalse(self.library.refresh_journal(path)["skipped"])
-        self.assertEqual(self.library.search("frames", source="journal"), [])
-        self.assertEqual(self.library.search("posture", source="journal")[0]["journal_date"], "2026-09-28")
+        self.assertEqual(self.library.search("frames", source="training"), [])
+        self.assertEqual(self.library.search("posture", source="training")[0]["journal_date"], "2026-09-28")
 
     def test_manifest_cannot_escape_media_root(self):
         self.entry["path"] = "../secret.mp4"

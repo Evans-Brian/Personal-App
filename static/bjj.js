@@ -47,12 +47,11 @@
       if(!data.results.length){results.append(node('p','No matching passages.','small'));return;}
       for(const result of data.results){
         const button=node('button',null,'bjj-result');button.type='button';
-        const label=result.source_type==='bjj_transcript'?`${result.instructor} · Volume ${result.volume} · ${time(result.start_seconds)}`:`${result.title} · ${result.source_type==='general_journal'?'Personal journal':result.source_type==='bjj_training'?'Training journal':'Study note'}`;
+        const label=result.source_type==='bjj_transcript'?`${result.instructor} · Volume ${result.volume} · ${time(result.start_seconds)}`:`${result.title} · ${result.source_type==='bjj_training'?'Training journal':'Study note'}`;
         const excerpt=result.excerpt.length>420?`${result.excerpt.slice(0,417).trim()}…`:result.excerpt;
         button.append(node('strong',label),node('span',excerpt));
         button.addEventListener('click',()=>{
           if(result.source_type==='bjj_transcript'||result.source_type==='bjj_note'){const course=library.courses.find(c=>c.id===result.course_id),item=course?.volumes.find(v=>v.id===result.media_id);if(course&&item)openVolume(course,item,result.start_seconds);return;}
-          if(result.source_type==='general_journal'&&result.journal_date){location.hash='#journal';const date=$('date');date.value=result.journal_date;date.dispatchEvent(new Event('change'));return;}
           if(result.source_type==='bjj_training'&&result.journal_date){$('bjj-training-date').value=result.journal_date;$('bjj-training-date').dispatchEvent(new Event('change'));$('bjj-training-form').scrollIntoView({behavior:'smooth'});}
         });
         results.append(button);

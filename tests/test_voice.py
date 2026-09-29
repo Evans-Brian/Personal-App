@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from app import make_server
+from voice import VoiceUnavailable
 
 class VoiceTests(unittest.TestCase):
     def test_audio_endpoint_origin_limits_and_transcript(self):
@@ -29,6 +30,9 @@ class VoiceTests(unittest.TestCase):
                     status,body=call(headers)
                     self.assertEqual(status,200);self.assertIn(b'A new task',body)
                     decode.assert_called_once_with(b'audio')
+                with patch('voice.transcribe',side_effect=VoiceUnavailable('Run `python setup_voice.py`, then restart the app.')):
+                    status,body=call(headers)
+                    self.assertEqual(status,503);self.assertIn(b'setup_voice.py',body)
                 self.assertFalse((root/'vault'/'Journal').exists())
             finally:
                 server.shutdown();server.server_close()
