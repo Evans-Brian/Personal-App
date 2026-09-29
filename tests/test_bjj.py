@@ -56,10 +56,14 @@ class BJJTests(unittest.TestCase):
                                        "text": "Keep my elbow close.", "tags": ["guard"]})
         self.assertIn("bjj://octopus-guard-2-v01?t=2.500", (self.vault / note["path"]).read_text(encoding="utf-8"))
         self.assertEqual(self.library.notes()[0]["timestamp"], 2.5)
-        journal = self.library.save_training({"date": "2026-09-28", "general_notes": "Octopus entry", "session_goals": "Hip position"})
+        journal = self.library.save_training({"date": "2026-09-28", "general_notes": "Octopus entry", "session_goals": "Hip position", "rating": "4"})
         self.assertIn("Octopus entry", (self.vault / journal["path"]).read_text(encoding="utf-8"))
         loaded = self.library.training("2026-09-28")
-        self.assertEqual((loaded["general_notes"], loaded["session_goals"]), ("Octopus entry", "Hip position"))
+        self.assertEqual((loaded["general_notes"], loaded["session_goals"], loaded["rating"]), ("Octopus entry", "Hip position", "4"))
+
+    def test_training_rating_validation(self):
+        with self.assertRaisesRegex(ValueError, "from 1 to 5"):
+            self.library.save_training({"date": "2026-09-28", "rating": "6"})
 
     def test_legacy_training_fields_are_preserved_when_loaded(self):
         folder = self.vault / "BJJ" / "Journal"

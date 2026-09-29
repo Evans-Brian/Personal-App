@@ -9,7 +9,7 @@
   dialog.append(info,review,stop,cancel,privacy);document.body.append(dialog);
   let active=null,stream=null,recorder=null,timer=null,controller=null,session=0;
   function release(){clearTimeout(timer);stream?.getTracks().forEach(track=>track.stop());stream=null;}
-  function close(){session++;if(recorder?.state==='recording')recorder.stop();release();controller?.abort();dialog.hidden=true;document.body.append(dialog);active=null;}
+  function close(){session++;if(recorder?.state==='recording')recorder.stop();release();controller?.abort();active?.closest('.voice-field-shell')?.querySelector('.voice-button')?.classList.remove('recording');dialog.hidden=true;document.body.append(dialog);active=null;}
   cancel.onclick=close;dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
   stop.onclick=()=>{if(recorder?.state==='recording')recorder.stop();};
   function appendTranscript(text){
@@ -32,7 +32,7 @@
       stream=acquired;
       const mime=['audio/webm;codecs=opus','audio/mp4','audio/ogg;codecs=opus'].find(type=>MediaRecorder.isTypeSupported(type));
       if(!mime)throw Error('This browser cannot record a supported format. Try Safari or Chrome.');
-      recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];let bytes=0;
+      recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];let bytes=0;field.closest('.voice-field-shell')?.querySelector('.voice-button')?.classList.add('recording');
       recorder.ondataavailable=event=>{if(event.data.size){chunks.push(event.data);bytes+=event.data.size;if(bytes>11*1024*1024 && recorder.state==='recording')recorder.stop();}};
       recorder.onerror=()=>{release();info.textContent='Recording stopped unexpectedly. Cancel and try again.';stop.hidden=true;};
       recorder.onstop=async()=>{
@@ -55,8 +55,9 @@
     if(active && !active.isConnected)close();
     document.querySelectorAll('#guided textarea, #guided input[type=text], #entry, #plan-review input[type=text], #people-page textarea, #people-page input[type=text], #restaurants-page textarea, #restaurants-page input[type=text], #bjj-query, #bjj-training-form textarea').forEach(field=>{
       if(field.closest('.voice-inline') || enhanced.has(field) || field.readOnly || field.type==='password')return;enhanced.add(field);
-      const button=document.createElement('button');button.type='button';button.className='voice-button';button.textContent='🎙';button.setAttribute('aria-label','Dictate into '+(field.getAttribute('aria-label') || field.labels?.[0]?.textContent || 'this field'));button.title=supported?'Speak instead of typing':'Microphone recording needs Safari or Chrome over HTTPS';button.disabled=!supported;
-      button.onclick=()=>{if(!field.disabled && !field.readOnly)record(field);};field.insertAdjacentElement('afterend',button);
+      const shell=document.createElement('span');shell.className='voice-field-shell';field.insertAdjacentElement('beforebegin',shell);shell.append(field);
+      const button=document.createElement('button');button.type='button';button.className='voice-button';button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M18 11v1a6 6 0 0 1-12 0v-1M12 18v3M9 21h6"/></svg>';button.setAttribute('aria-label','Dictate into '+(field.getAttribute('aria-label') || field.labels?.[0]?.textContent || 'this field'));button.title=supported?'Speak instead of typing':'Microphone recording needs Safari or Chrome over HTTPS';button.disabled=!supported;
+      button.onclick=()=>{if(!field.disabled && !field.readOnly)record(field);};shell.append(button);
     });
   }
   new MutationObserver(enhance).observe(document.querySelector('main'),{childList:true,subtree:true});enhance();

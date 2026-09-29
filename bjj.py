@@ -274,6 +274,10 @@ class BJJLibrary:
             if len(value) > 20_000:
                 raise ValueError("Training journal field is too long.")
             values[title] = value
+        rating = str(data.get("rating") or "").strip()
+        if rating and rating not in {"1", "2", "3", "4", "5"}:
+            raise ValueError("Session rating must be from 1 to 5.")
+        values["Session rating"] = rating
         if path.is_file():
             text = path.read_text(encoding="utf-8")
             for title, value in values.items():
@@ -297,12 +301,12 @@ class BJJLibrary:
     def training(self, day):
         day = _safe_day(day)
         path = self.vault / "BJJ" / "Journal" / f"{day}.md"
-        values = {key: "" for key in ("general_notes", "session_goals", "problems", "worked")}
+        values = {key: "" for key in ("rating", "general_notes", "session_goals", "problems", "worked")}
         if not path.is_file():
             return {"date": day, **values}
         text = path.read_text(encoding="utf-8")
         fields = (("general_notes", "General Notes"), ("session_goals", "Session Goals"),
-                  ("problems", "Problems encountered"), ("worked", "What worked"))
+                  ("problems", "Problems encountered"), ("worked", "What worked"), ("rating", "Session rating"))
         for key, title in fields:
             match = re.search(rf"^## {re.escape(title)}\s*\n\s*(.*?)(?=^## |\Z)", text, re.M | re.S)
             if match:
