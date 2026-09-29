@@ -134,6 +134,13 @@ class BJJTests(unittest.TestCase):
         self.assertEqual(len(results), 12)
         self.assertTrue(all("_content" not in result for result in results))
 
+    def test_browser_requests_fifteen_results_and_collapses_after_top_five(self):
+        source = (Path(__file__).parents[1] / "static" / "bjj.js").read_text(encoding="utf-8")
+        self.assertIn("limit:'15'", source)
+        self.assertIn("data.results.slice(0,5)", source)
+        self.assertIn("data.results.slice(5)", source)
+        self.assertIn("more ranked results", source)
+
     def test_hybrid_index_includes_training_but_excludes_personal_journals(self):
         personal = self.vault / "Journal"
         training = self.vault / "BJJ" / "Journal"

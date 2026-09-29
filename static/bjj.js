@@ -37,24 +37,31 @@
   video.addEventListener('timeupdate',()=>{if(!current)return;localStorage.setItem(`bjj:position:${current.item.id}`,String(video.currentTime));$('bjj-note-time').textContent=time(video.currentTime);let index=segments.findIndex(segment=>video.currentTime>=segment.start_seconds&&video.currentTime<segment.end_seconds);if(index!==active){document.querySelector(`.bjj-segment[data-index="${active}"]`)?.classList.remove('active');active=index;const row=document.querySelector(`.bjj-segment[data-index="${active}"]`);row?.classList.add('active');if(row && !row.matches(':hover,:focus'))row.scrollIntoView({block:'nearest'});$('bjj-note-excerpt').textContent=index>=0?(segments[index].corrected_text||segments[index].raw_text||''):'';}});
   for(const name of ['pause','ended','emptied'])video.addEventListener(name,()=>finishSpeedHold());
   $('bjj-chapters').addEventListener('change',event=>seek(event.target.value));
+  function searchResultButton(result){
+    const button=node('button',null,'bjj-result');button.type='button';
+    const label=result.source_type==='bjj_transcript'?`${result.instructor} · Volume ${result.volume} · ${result.section||result.chapter} · ${time(result.start_seconds)}–${time(result.end_seconds)}`:`${result.title} · ${result.source_type==='bjj_training'?'Training journal':'Study note'}`;
+    const excerpt=result.excerpt.length>420?`${result.excerpt.slice(0,417).trim()}…`:result.excerpt;
+    button.append(node('strong',label),node('span',excerpt));
+    button.addEventListener('click',()=>{
+      if(result.source_type==='bjj_transcript'||result.source_type==='bjj_note'){const course=library.courses.find(c=>c.id===result.course_id),item=course?.volumes.find(v=>v.id===result.media_id);if(course&&item)openVolume(course,item,result.start_seconds);return;}
+      if(result.source_type==='bjj_training'&&result.journal_date){$('bjj-training-date').value=result.journal_date;$('bjj-training-date').dispatchEvent(new Event('change'));$('bjj-training-form').scrollIntoView({behavior:'smooth'});}
+    });
+    return button;
+  }
   $('bjj-search-form').addEventListener('submit',async event=>{
     event.preventDefault();const results=$('bjj-search-results');results.textContent='Searching…';
     try{
-      const params=new URLSearchParams({q:$('bjj-query').value,source:$('bjj-search-source').value,limit:'12'});
+      const params=new URLSearchParams({q:$('bjj-query').value,source:$('bjj-search-source').value,limit:'15'});
       if($('bjj-search-mode').value==='semantic')params.set('semantic','1');
       for(const [field,id] of [['course','bjj-filter-course'],['volume','bjj-filter-volume'],['chapter','bjj-filter-chapter']])if($(id).value)params.set(field,$(id).value);
       const data=await request(`/api/bjj/search?${params}`);results.replaceChildren();
       if(!data.results.length){results.append(node('p','No matching passages.','small'));return;}
-      for(const result of data.results){
-        const button=node('button',null,'bjj-result');button.type='button';
-        const label=result.source_type==='bjj_transcript'?`${result.instructor} · Volume ${result.volume} · ${result.section||result.chapter} · ${time(result.start_seconds)}–${time(result.end_seconds)}`:`${result.title} · ${result.source_type==='bjj_training'?'Training journal':'Study note'}`;
-        const excerpt=result.excerpt.length>420?`${result.excerpt.slice(0,417).trim()}…`:result.excerpt;
-        button.append(node('strong',label),node('span',excerpt));
-        button.addEventListener('click',()=>{
-          if(result.source_type==='bjj_transcript'||result.source_type==='bjj_note'){const course=library.courses.find(c=>c.id===result.course_id),item=course?.volumes.find(v=>v.id===result.media_id);if(course&&item)openVolume(course,item,result.start_seconds);return;}
-          if(result.source_type==='bjj_training'&&result.journal_date){$('bjj-training-date').value=result.journal_date;$('bjj-training-date').dispatchEvent(new Event('change'));$('bjj-training-form').scrollIntoView({behavior:'smooth'});}
-        });
-        results.append(button);
+      for(const result of data.results.slice(0,5))results.append(searchResultButton(result));
+      const remaining=data.results.slice(5);
+      if(remaining.length){
+        const more=node('details',null,'bjj-more-results'),summary=node('summary',`Show ${remaining.length} more ranked results`),list=node('div');
+        for(const result of remaining)list.append(searchResultButton(result));
+        more.append(summary,list);results.append(more);
       }
     }catch(error){results.textContent=error.message;}
   });
