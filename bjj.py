@@ -1,7 +1,6 @@
 """Private BJJ media library, transcript index, and portable notes."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -10,12 +9,19 @@ from contextlib import closing
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from embeddings import LocalBGEEmbedder, blob_to_vector, vector_to_blob
+
 COURSES = (
     {"id": "down-right-sloppy-half-butterfly", "title": "Down Right Sloppy Half Butterfly", "instructor": "Eoghan O'Flanagan"},
     {"id": "octopus-guard-2", "title": "Octopus Guard 2.0", "instructor": "Craig Jones"},
     {"id": "shotgun-k-guard", "title": "Shotgun K Guard", "instructor": "Mateusz Szczecinski"},
 )
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9'_-]*", re.I)
+SEARCH_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "because", "but", "by", "can", "do", "for", "from",
+    "get", "how", "i", "in", "into", "is", "it", "me", "my", "of", "on", "or", "should", "that",
+    "the", "their", "this", "to", "was", "what", "when", "while", "why", "with",
+}
 
 
 def _utc_now():
@@ -45,26 +51,40 @@ def _words(text):
     return TOKEN_RE.findall((text or "").lower())
 
 
-def _embedding(text, dimensions=192):
-    """Small deterministic local embedding suitable for this 12-video collection."""
-    vector = [0.0] * dimensions
-    words = _words(text)
-    for token in words + [" ".join(words[i:i + 2]) for i in range(max(0, len(words) - 1))]:
-        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
-        number = int.from_bytes(digest, "little")
-        vector[number % dimensions] += -1.0 if number & 1 else 1.0
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [value / norm for value in vector]
+def _plain_markdown(text):
+    text = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, flags=re.S)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"^\s*(?:[-*+]\s+)?\[[ xX]\]\s*", "", text, flags=re.M)
+    text = re.sub(r"^[#>*_`~-]+\s*", "", text, flags=re.M)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _text_windows(text, target_words=160, overlap_words=30):
+    words = text.split()
+    if not words:
+        return []
+    windows = []
+    start = 0
+    while start < len(words):
+        end = min(start + target_words, len(words))
+        windows.append(" ".join(words[start:end]))
+        if end == len(words):
+            break
+        start = max(start + 1, end - overlap_words)
+    return windows
 
 
 class BJJLibrary:
-    def __init__(self, root, vault):
+    def __init__(self, root, vault, embedder=None):
         self.root = Path(root).resolve()
         self.vault = Path(vault).resolve()
         self.media_root = self.root / "media"
         self.transcript_root = self.root / "transcripts"
         self.index_path = self.root / "index" / "bjj.sqlite3"
         self.manifest_path = self.root / "manifest.json"
+        self.embedder = embedder or LocalBGEEmbedder()
 
     def manifest(self):
         if not self.manifest_path.exists():
@@ -122,7 +142,17 @@ class BJJLibrary:
                 })
             result.append({**course, "volumes": volumes, "complete": len(volumes) == 4 and all(x["present"] for x in volumes),
                            "duration": sum((x.get("duration") or 0) for x in volumes)})
-        return {"courses": result, "index_ready": self.index_path.is_file()}
+        index = {"ready": False, "embedding_model": None, "chunks": 0}
+        if self.index_path.is_file():
+            try:
+                with closing(self.connect()) as connection:
+                    metadata = dict(connection.execute("SELECT key, value FROM index_meta").fetchall())
+                index = {"ready": metadata.get("embedding_model") == self.embedder.version,
+                         "embedding_model": metadata.get("embedding_model"),
+                         "chunks": int(metadata.get("chunks", 0))}
+            except (sqlite3.Error, ValueError):
+                pass
+        return {"courses": result, "index_ready": index["ready"], "search_index": index}
 
     def connect(self):
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,59 +164,186 @@ class BJJLibrary:
               id TEXT PRIMARY KEY, media_id TEXT NOT NULL, course_id TEXT NOT NULL,
               instructor TEXT NOT NULL, volume INTEGER NOT NULL, chapter TEXT NOT NULL,
               start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, excerpt TEXT NOT NULL,
-              media_sha256 TEXT NOT NULL, embedding TEXT NOT NULL
+              media_sha256 TEXT NOT NULL, embedding BLOB NOT NULL,
+              source_type TEXT NOT NULL DEFAULT 'bjj_transcript', source_path TEXT NOT NULL DEFAULT '',
+              journal_date TEXT NOT NULL DEFAULT '', section TEXT NOT NULL DEFAULT '',
+              title TEXT NOT NULL DEFAULT '', embedding_model TEXT NOT NULL DEFAULT 'hash-v1'
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(id UNINDEXED, excerpt, chapter, instructor, course_id);
+            CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(chunks)")}
+        migrations = {
+            "source_type": "TEXT NOT NULL DEFAULT 'bjj_transcript'", "source_path": "TEXT NOT NULL DEFAULT ''",
+            "journal_date": "TEXT NOT NULL DEFAULT ''", "section": "TEXT NOT NULL DEFAULT ''",
+            "title": "TEXT NOT NULL DEFAULT ''", "embedding_model": "TEXT NOT NULL DEFAULT 'hash-v1'",
+        }
+        for name, definition in migrations.items():
+            if name not in columns:
+                connection.execute(f"ALTER TABLE chunks ADD COLUMN {name} {definition}")
+        connection.commit()
         return connection
 
     def rebuild_index(self):
-        manifest = self.manifest()
+        documents = [*self._transcript_documents(), *self._vault_documents()]
+        vectors = self.embedder.embed_documents([document.pop("embedding_text") for document in documents])
+        if len(vectors) != len(documents) or any(len(vector) != self.embedder.dimensions for vector in vectors):
+            raise RuntimeError("The embedding model returned an unexpected number or size of vectors.")
         with closing(self.connect()) as connection:
-            connection.execute("DELETE FROM chunks")
-            connection.execute("DELETE FROM chunks_fts")
-            count = 0
-            for item in manifest["media"]:
-                payload = self.transcript(item["id"])
-                segments = payload["segments"]
-                course = next((course for course in COURSES if course["id"] == item["course_id"]), None)
-                if not course:
-                    continue
-                index = 0
-                while index < len(segments):
-                    chapter_id = segments[index].get("chapter_id") or "Unchaptered"
-                    group, words = [], 0
-                    while index < len(segments):
-                        segment = segments[index]
-                        if (segment.get("chapter_id") or "Unchaptered") != chapter_id and group:
-                            break
-                        text = (segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip()
-                        group.append(segment)
-                        words += len(_words(text))
-                        index += 1
-                        if words >= 350:
-                            break
-                    text = " ".join((segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip() for segment in group).strip()
-                    if not text:
-                        continue
-                    chunk_id = f"{item['id']}:{int(group[0].get('segment_id', index)):06d}"
-                    values = (chunk_id, item["id"], item["course_id"], course["instructor"], int(item["volume"]), str(chapter_id),
-                              float(group[0]["start_seconds"]), float(group[-1]["end_seconds"]), text,
-                              item.get("sha256", ""), json.dumps(_embedding(text), separators=(",", ":")))
-                    connection.execute("INSERT OR REPLACE INTO chunks VALUES (?,?,?,?,?,?,?,?,?,?,?)", values)
-                    connection.execute("INSERT INTO chunks_fts(id,excerpt,chapter,instructor,course_id) VALUES (?,?,?,?,?)", (chunk_id, text, chapter_id, course["instructor"], item["course_id"]))
-                    count += 1
-            connection.commit()
-        return {"chunks": count}
+            with connection:
+                connection.execute("DELETE FROM chunks")
+                connection.execute("DELETE FROM chunks_fts")
+                connection.execute("DELETE FROM index_meta")
+                for document, vector in zip(documents, vectors):
+                    self._insert_document(connection, document, vector)
+                metadata = {"schema_version": "2", "embedding_model": self.embedder.version,
+                            "embedding_dimensions": str(self.embedder.dimensions), "chunks": str(len(documents)),
+                            "built_at": _utc_now()}
+                connection.executemany("INSERT INTO index_meta(key,value) VALUES (?,?)", metadata.items())
+        counts = {}
+        for document in documents:
+            counts[document["source_type"]] = counts.get(document["source_type"], 0) + 1
+        return {"chunks": len(documents), "sources": counts, "embedding_model": self.embedder.version,
+                "dimensions": self.embedder.dimensions}
 
-    def search(self, query, course_id="", volume="", chapter="", semantic=False, limit=30):
+    def _transcript_documents(self):
+        documents = []
+        for item in self.manifest()["media"]:
+            course = next((value for value in COURSES if value["id"] == item.get("course_id")), None)
+            if not course:
+                continue
+            segments = self.transcript(item["id"])["segments"]
+            chapters = {chapter.get("id"): chapter.get("title", chapter.get("id")) for chapter in item.get("chapters", [])}
+            index = 0
+            while index < len(segments):
+                chapter_id = segments[index].get("chapter_id") or "Unchaptered"
+                same_chapter = []
+                while index < len(segments) and (segments[index].get("chapter_id") or "Unchaptered") == chapter_id:
+                    same_chapter.append(segments[index]); index += 1
+                offset = 0
+                while offset < len(same_chapter):
+                    group, word_count, cursor = [], 0, offset
+                    while cursor < len(same_chapter) and word_count < 160:
+                        segment = same_chapter[cursor]
+                        text = (segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip()
+                        group.append(segment); word_count += len(_words(text)); cursor += 1
+                    excerpt = " ".join((segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip() for segment in group).strip()
+                    if excerpt:
+                        title = chapters.get(chapter_id, str(chapter_id))
+                        documents.append({
+                            "id": f"{item['id']}:{int(group[0].get('segment_id', offset)):06d}",
+                            "media_id": item["id"], "course_id": item["course_id"], "instructor": course["instructor"],
+                            "volume": int(item["volume"]), "chapter": str(chapter_id), "start_seconds": float(group[0]["start_seconds"]),
+                            "end_seconds": float(group[-1]["end_seconds"]), "excerpt": excerpt, "media_sha256": item.get("sha256", ""),
+                            "source_type": "bjj_transcript", "source_path": item.get("transcript", ""), "journal_date": "",
+                            "section": title, "title": f"{course['title']} · Volume {item['volume']} · {title}",
+                            "embedding_text": f"BJJ instructional. {course['title']}. {title}. {excerpt}",
+                        })
+                    if cursor >= len(same_chapter):
+                        break
+                    offset = max(offset + 1, cursor - 1)
+        return documents
+
+    def _vault_documents(self):
+        documents = []
+        folders = ((self.vault / "Journal", "general_journal"),
+                   (self.vault / "BJJ" / "Journal", "bjj_training"),
+                   (self.vault / "BJJ" / "Study Notes", "bjj_note"))
+        for folder, source_type in folders:
+            if not folder.is_dir():
+                continue
+            for path in sorted(folder.glob("*.md")):
+                documents.extend(self._markdown_documents(path, source_type))
+        return documents
+
+    def _markdown_documents(self, path, source_type):
+        raw = path.read_text(encoding="utf-8")
+        body = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", raw, flags=re.S)
+        headings = list(re.finditer(r"^(#{1,3})\s+(.+?)\s*$", body, re.M))
+        relative = str(path.relative_to(self.vault)).replace("\\", "/")
+        journal_date = path.stem[:10] if re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", path.stem) else ""
+        note_metadata = {"media_id": "", "course_id": "", "instructor": "", "volume": 0, "start_seconds": 0.0}
+        if source_type == "bjj_note":
+            media_match = re.search(r"^media_id:\s*(\S+)\s*$", raw, re.M)
+            time_match = re.search(r"^timestamp_seconds:\s*([0-9.]+)\s*$", raw, re.M)
+            if media_match:
+                item = next((value for value in self.manifest()["media"] if value.get("id") == media_match.group(1)), None)
+                course = next((value for value in COURSES if item and value["id"] == item.get("course_id")), None)
+                if item and course:
+                    note_metadata = {"media_id": item["id"], "course_id": item["course_id"],
+                                     "instructor": course["instructor"], "volume": int(item["volume"]),
+                                     "start_seconds": float(time_match.group(1)) if time_match else 0.0}
+        documents = []
+        if not headings:
+            headings = [re.match(r"", body)]
+        for position, heading in enumerate(headings):
+            title = heading.group(2).strip() if heading and heading.lastindex else path.stem
+            start = heading.end() if heading else 0
+            end = headings[position + 1].start() if position + 1 < len(headings) else len(body)
+            excerpt = _plain_markdown(body[start:end])
+            if len(_words(excerpt)) < 3:
+                continue
+            for part, window in enumerate(_text_windows(excerpt)):
+                context = {"general_journal": "Personal journal", "bjj_training": "BJJ training journal",
+                           "bjj_note": "BJJ study note"}[source_type]
+                documents.append({
+                    "id": f"{source_type}:{relative}:{position:03d}:{part:03d}", **note_metadata,
+                    "chapter": title, "end_seconds": note_metadata["start_seconds"],
+                    "excerpt": window, "media_sha256": "", "source_type": source_type, "source_path": relative,
+                    "journal_date": journal_date, "section": title, "title": f"{journal_date} · {title}" if journal_date else title,
+                    "embedding_text": f"{context}. Date {journal_date}. Section {title}. {window}",
+                })
+        return documents
+
+    def _insert_document(self, connection, document, vector):
+        columns = ("id", "media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
+                   "excerpt", "media_sha256", "embedding", "source_type", "source_path", "journal_date", "section", "title", "embedding_model")
+        values = [document.get(column, "") for column in columns]
+        values[10] = vector_to_blob(vector)
+        values[-1] = self.embedder.version
+        connection.execute(f"INSERT OR REPLACE INTO chunks({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", values)
+        connection.execute("INSERT INTO chunks_fts(id,excerpt,chapter,instructor,course_id) VALUES (?,?,?,?,?)",
+                           (document["id"], document["excerpt"], document["section"], document["instructor"], document["course_id"]))
+
+    def refresh_journal(self, path, source_type="general_journal"):
+        """Refresh one saved Markdown file without rebuilding every transcript."""
+        path = Path(path).resolve()
+        if source_type not in {"general_journal", "bjj_training", "bjj_note"} or not path.is_relative_to(self.vault):
+            raise ValueError("Cannot index that journal path.")
+        if not self.index_path.is_file():
+            return {"indexed": 0, "skipped": True}
+        documents = self._markdown_documents(path, source_type) if path.is_file() else []
+        vectors = self.embedder.embed_documents([document.pop("embedding_text") for document in documents])
+        relative = str(path.relative_to(self.vault)).replace("\\", "/")
+        with closing(self.connect()) as connection:
+            metadata = dict(connection.execute("SELECT key, value FROM index_meta").fetchall())
+            if metadata.get("embedding_model") != self.embedder.version:
+                return {"indexed": 0, "skipped": True}
+            with connection:
+                identifiers = [row[0] for row in connection.execute("SELECT id FROM chunks WHERE source_path = ?", (relative,))]
+                connection.executemany("DELETE FROM chunks_fts WHERE id = ?", ((identifier,) for identifier in identifiers))
+                connection.execute("DELETE FROM chunks WHERE source_path = ?", (relative,))
+                for document, vector in zip(documents, vectors):
+                    self._insert_document(connection, document, vector)
+                count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+                connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('chunks',?)", (str(count),))
+                connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('updated_at',?)", (_utc_now(),))
+        return {"indexed": len(documents), "skipped": False}
+
+    def search(self, query, course_id="", volume="", chapter="", semantic=False, limit=30, source="bjj"):
         query = (query or "").strip()
         if not query or len(query) > 300:
             raise ValueError("Enter a search query up to 300 characters.")
         limit = min(max(int(limit), 1), 100)
         if not self.index_path.exists():
             return []
+        if source not in {"bjj", "training", "journal", "all"}:
+            raise ValueError("Unknown search source.")
         clauses, values = [], []
+        source_types = {"bjj": ("bjj_transcript",), "training": ("bjj_training",),
+                        "journal": ("general_journal",), "all": ()}[source]
+        if source_types:
+            clauses.append("c.source_type IN (" + ",".join("?" for _ in source_types) + ")"); values.extend(source_types)
         if course_id:
             clauses.append("c.course_id = ?"); values.append(course_id)
         if volume:
@@ -196,19 +353,44 @@ class BJJLibrary:
         where = (" AND " + " AND ".join(clauses)) if clauses else ""
         with closing(self.connect()) as connection:
             if semantic:
-                rows = connection.execute("SELECT c.* FROM chunks c WHERE 1=1" + where, values).fetchall()
-                needle = _embedding(query)
-                ranked = sorted(((sum(a * b for a, b in zip(needle, json.loads(row["embedding"]))), row) for row in rows), reverse=True, key=lambda x: x[0])[:limit]
-                return [self._result(row, score) for score, row in ranked if score > 0]
-            terms = " ".join(f'"{word}"' for word in _words(query))
-            if not terms:
-                return []
-            rows = connection.execute("SELECT c.*, bm25(chunks_fts) score FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.id WHERE chunks_fts MATCH ?" + where + " ORDER BY score LIMIT ?", [terms, *values, limit]).fetchall()
+                semantic_rows = connection.execute("SELECT c.* FROM chunks c WHERE c.embedding_model = ?" + where,
+                                                   [self.embedder.version, *values]).fetchall()
+                if not semantic_rows:
+                    raise ValueError("The related-ideas index is missing or outdated. Run `python setup_embeddings.py` to rebuild it.")
+                needle = self.embedder.embed_query(query)
+                semantic_ranked = sorted(((sum(a * b for a, b in zip(needle, blob_to_vector(row["embedding"]))), row)
+                                          for row in semantic_rows), reverse=True, key=lambda item: item[0])[:max(limit * 4, 60)]
+                lexical = self._fts_rows(connection, query, where, values, max(limit * 4, 60), any_term=True)
+                combined = {}
+                rows_by_id = {}
+                for rank, (_, row) in enumerate(semantic_ranked, 1):
+                    combined[row["id"]] = combined.get(row["id"], 0) + 0.85 / (60 + rank)
+                    rows_by_id[row["id"]] = row
+                for rank, row in enumerate(lexical, 1):
+                    combined[row["id"]] = combined.get(row["id"], 0) + 0.15 / (60 + rank)
+                    rows_by_id[row["id"]] = row
+                ranked_ids = sorted(combined, key=combined.get, reverse=True)[:limit]
+                return [self._result(rows_by_id[row_id], combined[row_id]) for row_id in ranked_ids]
+            rows = self._fts_rows(connection, query, where, values, limit)
             return [self._result(row, -float(row["score"])) for row in rows]
 
     @staticmethod
+    def _fts_rows(connection, query, where, values, limit, any_term=False):
+        words = [word for word in _words(query) if word not in SEARCH_STOP_WORDS]
+        if not words:
+            return []
+        separator = " OR " if any_term else " "
+        terms = separator.join(f'"{word}"' for word in words)
+        return connection.execute(
+            "SELECT c.*, bm25(chunks_fts) score FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.id "
+            "WHERE chunks_fts MATCH ?" + where + " ORDER BY score LIMIT ?", [terms, *values, limit]
+        ).fetchall()
+
+    @staticmethod
     def _result(row, score):
-        return {key: row[key] for key in ("media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds", "excerpt")} | {"score": score}
+        keys = ("media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
+                "excerpt", "source_type", "source_path", "journal_date", "section", "title")
+        return {key: row[key] for key in keys} | {"score": score}
 
     def save_note(self, data):
         media_id = data.get("media_id")
@@ -239,7 +421,12 @@ class BJJLibrary:
             body.extend(["> " + excerpt.replace("\n", "\n> "), ""])
         body.extend([text, ""])
         path.write_text("\n".join(body), encoding="utf-8")
-        return {"path": str(path.relative_to(self.vault)), "media_id": media_id, "timestamp": timestamp}
+        result = {"path": str(path.relative_to(self.vault)), "media_id": media_id, "timestamp": timestamp}
+        try:
+            self.refresh_journal(path, "bjj_note")
+        except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+            result["index_warning"] = str(exc)
+        return result
 
     def notes(self, limit=100):
         folder = self.vault / "BJJ" / "Study Notes"
@@ -296,7 +483,12 @@ class BJJLibrary:
         temporary = path.with_suffix(".tmp")
         temporary.write_text(output, encoding="utf-8")
         temporary.replace(path)
-        return {"path": str(path.relative_to(self.vault)), "date": day, "saved_at": _utc_now()}
+        result = {"path": str(path.relative_to(self.vault)), "date": day, "saved_at": _utc_now()}
+        try:
+            self.refresh_journal(path, "bjj_training")
+        except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+            result["index_warning"] = str(exc)
+        return result
 
     def training(self, day):
         day = _safe_day(day)

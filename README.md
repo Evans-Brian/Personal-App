@@ -1,6 +1,6 @@
 # A little room
 
-A small local journal: Python 3.12+, standard-library HTTP and SQLite, and plain HTML/CSS/JavaScript. No package installation, account, build step, vector database, or AI service is required.
+A small local journal: Python 3.12+, standard-library HTTP and SQLite, and plain HTML/CSS/JavaScript. Core journaling and exact search require no package installation, account, build step, vector database, or AI service. Optional local voice and semantic-search setup scripts install their private runtimes under ignored `data/` folders.
 
 ## Start
 
@@ -34,6 +34,9 @@ The BJJ tab reads a private local instructional library from the `bjj_library` p
 journal-app/
   app.py                 Loopback-only server and JSON endpoints
   bjj.py                 Private BJJ library, transcript search, notes, and journals
+  embeddings.py          Offline BGE inference and binary-vector encoding
+  setup_embeddings.py    One-time local FastEmbed/model install and index rebuild
+  eval_bjj_search.py     Reproducible hash/BGE/hybrid retrieval evaluation
   prepare_bjj.py         Local BJJ media validation and manifest generation
   transcribe_bjj.py      Restart-safe local BJJ transcription and indexing
   official_chapters.py   BJJ Fanatics chapter starts used by the manifest
@@ -78,11 +81,15 @@ After authorization the background worker imports the past 90 days, then checks 
 
 The panel shows daily sleep, readiness, and activity scores plus steps for the selected journal date. Missing values display a dash rather than zero. Raw daily summaries are stored in SQLite by `(kind, id)`, with date and import timestamp, so repeat imports update instead of duplicating records. Disconnect deletes local tokens and stops future fetches, retaining imported history; revoke authorization in your Oura account if desired. Detailed sleep periods are also imported, including sleep duration, stages, efficiency, bedtime/wake time, average HRV, lowest and average sleeping heart rate, and breathing rate. The expandable sleep panel shows each period separately on its Oura-assigned day, using recorded local times. Durations are converted from seconds and rounded to minutes; missing readings stay blank rather than becoming zero. Raw sleep payloads remain in SQLite for later queries. Continuous daytime heart-rate data is not fetched. Existing connections get a one-time 90-day sleep backfill, followed by the normal 30-day refresh window.
 
-For a later AI feature, use `Journal.read_range(start, end)` and `OuraStore.read_range(start, end)` to gather selected dates directly. Add a preview of exactly what will be sent and an explicit send action before any model integration. There is no journal or Oura indexing/RAG.
+The private search index includes journal text for local retrieval, but not Oura data, and it does not send text to an AI service. A future answer-generation feature should show exactly which retrieved passages would be supplied and require an explicit send action before any cloud-model integration.
 
 ## BJJ library
 
-The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, exact transcript search, related-idea search, timestamped study notes, and a daily training journal. Transcript search defaults to Related ideas, with Exact terms available from the search mode selector. While a video is playing, hold the right side on a phone or hold `F` on desktop to temporarily speed playback; desktop mouse clicks are left to the native video player. The player's ellipsis menu configures the temporary speed for both controls. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal` and contain General Notes, Session Goals, Problems encountered, What worked, and an optional 1-5 session rating.
+The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, hybrid related-idea search, exact FTS5 search, timestamped study notes, and a daily training journal. Search can target instructionals, the BJJ training journal, the personal journal, or all three. Related ideas is the default and combines BGE semantic retrieval with a smaller exact-term boost; Exact terms remains available separately. Results retain their source path, date, section, and video timestamp so they link back to the original material.
+
+Run `python setup_embeddings.py` once after configuring the vault and BJJ library. It installs FastEmbed/ONNX and caches `BAAI/bge-small-en-v1.5` locally, then rebuilds the SQLite index with 384-dimensional float vectors. If the checkout has no `config.local.json`, pass `--bjj-library "C:\BJJ-Library" --vault "C:\Obsidian-Personal"`. Runtime inference is offline-only. The index uses approximately 160-word overlapping chunks without crossing transcript chapters, records its model/version, and refreshes an affected journal file after each app save. Exact FTS5 search continues working if the optional model is unavailable.
+
+While a video is playing, hold the right side on a phone or hold `F` on desktop to temporarily speed playback; desktop mouse clicks are left to the native video player. The player's ellipsis menu configures the temporary speed for both controls. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal` and contain General Notes, Session Goals, Problems encountered, What worked, and an optional 1-5 session rating.
 
 Set both vault and library paths in the ignored `config.local.json`:
 
@@ -94,6 +101,8 @@ Set both vault and library paths in the ignored `config.local.json`:
 ```
 
 `C:\BJJ-Library\manifest.json` is the library source of truth. It points to the ignored local media, transcript, and index files. Use `BJJ_IMPLEMENTATION_PLAN.md` for the private acquisition, verification, transcription, and rebuild procedure.
+
+Run `python eval_bjj_search.py` to compare the retained 192-dimensional feature-hash baseline, BGE, and hybrid ranking on the checked-in paraphrase/transcription-noise evaluation set. The fixture contains synthetic text only; it never reads or prints private journal content.
 
 ## Verify
 

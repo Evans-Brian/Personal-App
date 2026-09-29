@@ -10,6 +10,7 @@ from unittest.mock import patch
 import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary
+from embeddings import HashEmbedder
 from official_chapters import chapters
 from transcribe_bjj import chapter_at, normalize_segments, outputs, transcript_output_complete
 
@@ -32,7 +33,7 @@ class BJJTests(unittest.TestCase):
                                    "raw_text": "Use the under hook from octopus guard.",
                                    "corrected_text": "Use the underhook from octopus guard.", "chapter_id": "intro"}]}
         (transcript / "v01.segments.json").write_text(json.dumps(segments), encoding="utf-8")
-        self.library = BJJLibrary(self.root, self.vault)
+        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder())
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -44,6 +45,38 @@ class BJJTests(unittest.TestCase):
         exact = self.library.search("underhook")
         self.assertEqual(exact[0]["media_id"], "octopus-guard-2-v01")
         self.assertEqual(self.library.search("octopus position", semantic=True)[0]["start_seconds"], 0)
+
+    def test_hybrid_index_includes_training_and_personal_journals(self):
+        personal = self.vault / "Journal"
+        training = self.vault / "BJJ" / "Journal"
+        personal.mkdir(parents=True); training.mkdir(parents=True)
+        (personal / "2026-09-27.md").write_text(
+            "# 2026-09-27\n\n## Evening\n\n### What got in the way?\n\nI felt overwhelmed after poor sleep.\n",
+            encoding="utf-8",
+        )
+        (training / "2026-09-28.md").write_text(
+            "# BJJ training\n\n## Problems encountered\n\nI lost the underhook and got flattened.\n",
+            encoding="utf-8",
+        )
+        rebuilt = self.library.rebuild_index()
+        self.assertEqual(rebuilt["sources"]["general_journal"], 1)
+        self.assertEqual(rebuilt["sources"]["bjj_training"], 1)
+        result = self.library.search("overwhelmed", source="journal")[0]
+        self.assertEqual((result["source_type"], result["journal_date"]), ("general_journal", "2026-09-27"))
+        sources = {item["source_type"] for item in self.library.search("underhook", semantic=True, source="all")}
+        self.assertIn("bjj_training", sources)
+
+    def test_incremental_journal_refresh_replaces_saved_file_chunks(self):
+        folder = self.vault / "Journal"
+        folder.mkdir(parents=True)
+        path = folder / "2026-09-28.md"
+        path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nFrames helped me stay calm.\n", encoding="utf-8")
+        self.library.rebuild_index()
+        self.assertEqual(self.library.search("frames", source="journal")[0]["journal_date"], "2026-09-28")
+        path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nPosture helped me stay balanced.\n", encoding="utf-8")
+        self.assertFalse(self.library.refresh_journal(path)["skipped"])
+        self.assertEqual(self.library.search("frames", source="journal"), [])
+        self.assertEqual(self.library.search("posture", source="journal")[0]["journal_date"], "2026-09-28")
 
     def test_manifest_cannot_escape_media_root(self):
         self.entry["path"] = "../secret.mp4"
@@ -122,6 +155,10 @@ class BJJTests(unittest.TestCase):
                 return response.status, body, values
             status, body, headers = get("/api/bjj/media/octopus-guard-2-v01", {"Range": "bytes=2-5"})
             self.assertEqual((status, body, headers["Content-Range"]), (206, b"2345", "bytes 2-5/10"))
+            self.library.rebuild_index()
+            status, body, _ = get("/api/bjj/search?q=underhook&source=bjj")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)["results"][0]["source_type"], "bjj_transcript")
             self.assertEqual(get("/api/bjj/media/octopus-guard-2-v01", {"Range": "bytes=50-60"})[0], 416)
             self.assertEqual(get("/api/bjj/media/../../config.local.json")[0], 404)
             self.assertEqual(get("/api/bjj/library", {"Host": "evil.example"})[0], 403)

@@ -149,7 +149,11 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, bjj.transcript(parse_qs(url.query).get('media_id', [''])[0]))
                 if url.path == '/api/bjj/search':
                     query = parse_qs(url.query)
-                    return self.respond(200, {'results': bjj.search(query.get('q', [''])[0], query.get('course', [''])[0], query.get('volume', [''])[0], query.get('chapter', [''])[0], query.get('semantic', ['0'])[0] == '1')})
+                    return self.respond(200, {'results': bjj.search(
+                        query.get('q', [''])[0], query.get('course', [''])[0], query.get('volume', [''])[0],
+                        query.get('chapter', [''])[0], query.get('semantic', ['0'])[0] == '1',
+                        limit=query.get('limit', ['30'])[0], source=query.get('source', ['bjj'])[0],
+                    )})
                 if url.path == '/api/bjj/notes':
                     return self.respond(200, {'notes': bjj.notes()})
                 if url.path == '/api/bjj/training':
@@ -181,7 +185,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     name, mime = assets[url.path]
                     return self.respond(200, (ROOT / "static" / name).read_bytes(), mime if mime == "image/png" else mime + "; charset=utf-8")
                 self.respond(404, {"error": "Not found"})
-            except (ValueError, OSError) as exc:
+            except (ValueError, OSError, RuntimeError) as exc:
                 self.respond(400, {"error": str(exc)})
 
         def do_POST(self):
@@ -231,6 +235,10 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     sync.disconnect()
                     return self.respond(200, sync.status())
                 result = journal.save(data.get("date"), data.get("period"), data.get("content"), data.get("revision"))
+                try:
+                    bjj.refresh_journal(result["path"], "general_journal")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    result["index_warning"] = str(exc)
                 self.respond(200, result)
             except Conflict as exc:
                 self.respond(409, {"error": str(exc)})
