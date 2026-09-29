@@ -141,7 +141,7 @@ Each journal note stores `journal_calendar` in its YAML frontmatter: `is_weekend
 
 ### Restaurants
 
-The top navigation opens Journal by default, with Restaurants as a separate section. Add a restaurant, select its visit date (defaults to the local current date), and expand it to add dishes. Restaurant and dish reviews each include an optional 1–5 score and a single Thoughts field. Legacy review text is merged into Thoughts when opened, then persisted on Save restaurants. **Add Ashley** reveals an independent set of fields for her. Ratings may remain unrated.
+Restaurants is available from the top navigation. Add a restaurant, select its visit date (defaults to the local current date), and expand it to add dishes. Restaurant and dish reviews each include an optional 1–5 score and a single Thoughts field. Legacy review text is merged into Thoughts when opened, then persisted on Save restaurants. **Add Ashley** reveals an independent set of fields for her. Ratings may remain unrated.
 
 Use **Save restaurants** to persist the collection in `Restaurants/restaurants.json` inside the configured vault. Browser drafts are separate from journal drafts and recover after refresh. Atomic writes and revision checks prevent a stale tab from silently overwriting newer saved reviews. This first version has one visit date per restaurant entry; multiple visits can be entered as separate entries. No restaurant data is sent to a third party.
 
