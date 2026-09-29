@@ -266,8 +266,8 @@ class BJJLibrary:
         folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{day}.md"
-        fields = (("techniques", "Techniques studied"), ("drills", "Drills"), ("sparring", "Sparring observations"),
-                  ("worked", "What worked"), ("problems", "Problems encountered"), ("next_focus", "Next practice focus"))
+        fields = (("general_notes", "General Notes"), ("session_goals", "Session Goals"),
+                  ("problems", "Problems encountered"), ("worked", "What worked"))
         lines = ["---", f"date: {day}", "type: bjj-training-journal", "tags: [bjj, training]", "---", "", f"# BJJ training — {day}", ""]
         for key, title in fields:
             value = str(data.get(key) or "").strip()
@@ -282,14 +282,25 @@ class BJJLibrary:
     def training(self, day):
         day = _safe_day(day)
         path = self.vault / "BJJ" / "Journal" / f"{day}.md"
-        values = {key: "" for key in ("techniques", "drills", "sparring", "worked", "problems", "next_focus")}
+        values = {key: "" for key in ("general_notes", "session_goals", "problems", "worked")}
         if not path.is_file():
             return {"date": day, **values}
         text = path.read_text(encoding="utf-8")
-        fields = (("techniques", "Techniques studied"), ("drills", "Drills"), ("sparring", "Sparring observations"),
-                  ("worked", "What worked"), ("problems", "Problems encountered"), ("next_focus", "Next practice focus"))
+        fields = (("general_notes", "General Notes"), ("session_goals", "Session Goals"),
+                  ("problems", "Problems encountered"), ("worked", "What worked"))
         for key, title in fields:
             match = re.search(rf"^## {re.escape(title)}\s*\n\s*(.*?)(?=^## |\Z)", text, re.M | re.S)
             if match:
                 values[key] = match.group(1).strip()
+        if not values["general_notes"]:
+            legacy_notes = []
+            for title in ("Techniques studied", "Drills", "Sparring observations"):
+                match = re.search(rf"^## {re.escape(title)}\s*\n\s*(.*?)(?=^## |\Z)", text, re.M | re.S)
+                if match and match.group(1).strip():
+                    legacy_notes.append(f"{title}:\n{match.group(1).strip()}")
+            values["general_notes"] = "\n\n".join(legacy_notes)
+        if not values["session_goals"]:
+            match = re.search(r"^## Next practice focus\s*\n\s*(.*?)(?=^## |\Z)", text, re.M | re.S)
+            if match:
+                values["session_goals"] = match.group(1).strip()
         return {"date": day, "path": str(path.relative_to(self.vault)), **values}

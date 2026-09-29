@@ -53,7 +53,7 @@
   const enhanced=new WeakSet();
   function enhance(){
     if(active && !active.isConnected)close();
-    document.querySelectorAll('#guided textarea, #guided input[type=text], #entry, #plan-review input[type=text], #people-page textarea, #people-page input[type=text], #restaurants-page textarea, #restaurants-page input[type=text]').forEach(field=>{
+    document.querySelectorAll('#guided textarea, #guided input[type=text], #entry, #plan-review input[type=text], #people-page textarea, #people-page input[type=text], #restaurants-page textarea, #restaurants-page input[type=text], #bjj-query, #bjj-training-form textarea').forEach(field=>{
       if(field.closest('.voice-inline') || enhanced.has(field) || field.readOnly || field.type==='password')return;enhanced.add(field);
       const button=document.createElement('button');button.type='button';button.className='voice-button';button.textContent='🎙';button.setAttribute('aria-label','Dictate into '+(field.getAttribute('aria-label') || field.labels?.[0]?.textContent || 'this field'));button.title=supported?'Speak instead of typing':'Microphone recording needs Safari or Chrome over HTTPS';button.disabled=!supported;
       button.onclick=()=>{if(!field.disabled && !field.readOnly)record(field);};field.insertAdjacentElement('afterend',button);

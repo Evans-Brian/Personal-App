@@ -56,10 +56,24 @@ class BJJTests(unittest.TestCase):
                                        "text": "Keep my elbow close.", "tags": ["guard"]})
         self.assertIn("bjj://octopus-guard-2-v01?t=2.500", (self.vault / note["path"]).read_text(encoding="utf-8"))
         self.assertEqual(self.library.notes()[0]["timestamp"], 2.5)
-        journal = self.library.save_training({"date": "2026-09-28", "techniques": "Octopus entry", "next_focus": "Hip position"})
+        journal = self.library.save_training({"date": "2026-09-28", "general_notes": "Octopus entry", "session_goals": "Hip position"})
         self.assertIn("Octopus entry", (self.vault / journal["path"]).read_text(encoding="utf-8"))
         loaded = self.library.training("2026-09-28")
-        self.assertEqual((loaded["techniques"], loaded["next_focus"]), ("Octopus entry", "Hip position"))
+        self.assertEqual((loaded["general_notes"], loaded["session_goals"]), ("Octopus entry", "Hip position"))
+
+    def test_legacy_training_fields_are_preserved_when_loaded(self):
+        folder = self.vault / "BJJ" / "Journal"
+        folder.mkdir(parents=True)
+        (folder / "2026-09-27.md").write_text(
+            "# BJJ training\n\n## Techniques studied\n\nK guard\n\n## Drills\n\nEntries\n\n"
+            "## What worked\n\nTiming\n\n## Problems encountered\n\nPosture\n\n## Next practice focus\n\nFrames\n",
+            encoding="utf-8",
+        )
+        loaded = self.library.training("2026-09-27")
+        self.assertIn("K guard", loaded["general_notes"])
+        self.assertIn("Entries", loaded["general_notes"])
+        self.assertEqual(loaded["session_goals"], "Frames")
+        self.assertEqual((loaded["problems"], loaded["worked"]), ("Posture", "Timing"))
 
     def test_study_notes_do_not_collide_with_same_clock_tick(self):
         class FixedDatetime(datetime):
