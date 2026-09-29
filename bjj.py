@@ -22,6 +22,7 @@ from chapter_ai import (
     JevReranker,
 )
 from journal import Conflict
+from secrets_store import SecretStore
 
 COURSES = (
     {"id": "down-right-sloppy-half-butterfly", "title": "Down Right Sloppy Half Butterfly", "instructor": "Eoghan O'Flanagan"},
@@ -97,10 +98,41 @@ class BJJLibrary:
         self.transcript_root = self.root / "transcripts"
         self.index_path = self.root / "index" / "bjj.sqlite3"
         self.summary_path = self.root / "work" / "chapter-summaries.json"
+        self.ai_secret_path = self.root / "work" / "ai-secrets.bin"
         self.manifest_path = self.root / "manifest.json"
         self.embedder = embedder or LocalBGEEmbedder()
-        self.reranker = reranker or JevReranker()
+        self.ai_secrets = SecretStore(self.ai_secret_path)
+        credentials = self.ai_secrets.read()
+        self.reranker = reranker or JevReranker(api_key=os.environ.get("TYPESAFE_API_KEY") or credentials.get("typesafe_api_key", ""))
         self.training_lock = threading.Lock()
+
+    def ai_status(self):
+        credentials = self.ai_secrets.read()
+        return {
+            "openai_configured": bool(os.environ.get("OPENAI_API_KEY") or credentials.get("openai_api_key")),
+            "typesafe_configured": bool(os.environ.get("TYPESAFE_API_KEY") or credentials.get("typesafe_api_key")),
+        }
+
+    def save_ai_credentials(self, data):
+        credentials = self.ai_secrets.read()
+        openai_key = str(data.get("openai_api_key") or "").strip()
+        typesafe_key = str(data.get("typesafe_api_key") or "").strip()
+        if openai_key:
+            if not openai_key.startswith("sk-") or len(openai_key) > 512:
+                raise ValueError("The OpenAI API key format is invalid.")
+            credentials["openai_api_key"] = openai_key
+        if typesafe_key:
+            if len(typesafe_key) < 20 or len(typesafe_key) > 512:
+                raise ValueError("The TypeSafe API key format is invalid.")
+            credentials["typesafe_api_key"] = typesafe_key
+        if not openai_key and not typesafe_key:
+            raise ValueError("Enter at least one API key.")
+        self.ai_secrets.write(credentials)
+        self.reranker = JevReranker(api_key=os.environ.get("TYPESAFE_API_KEY") or credentials.get("typesafe_api_key", ""))
+        return self.ai_status()
+
+    def openai_api_key(self):
+        return os.environ.get("OPENAI_API_KEY") or self.ai_secrets.read().get("openai_api_key", "")
 
     def manifest(self):
         if not self.manifest_path.exists():

@@ -141,6 +141,27 @@ class BJJTests(unittest.TestCase):
         self.assertIn("data.results.slice(5)", source)
         self.assertIn("more ranked results", source)
 
+    def test_ai_credentials_are_encrypted_server_side_and_never_returned(self):
+        class MemorySecrets:
+            def __init__(self):
+                self.data = {}
+
+            def read(self):
+                return dict(self.data)
+
+            def write(self, data):
+                self.data = dict(data)
+
+        secrets = MemorySecrets()
+        self.library.ai_secrets = secrets
+        openai_key = "sk-" + "x" * 40
+        status = self.library.save_ai_credentials({"openai_api_key": openai_key})
+        self.assertEqual(status, {"openai_configured": True, "typesafe_configured": False})
+        self.assertEqual(secrets.data["openai_api_key"], openai_key)
+        self.assertNotIn("openai_api_key", status)
+        with self.assertRaisesRegex(ValueError, "format is invalid"):
+            self.library.save_ai_credentials({"typesafe_api_key": "short"})
+
     def test_hybrid_index_includes_training_but_excludes_personal_journals(self):
         personal = self.vault / "Journal"
         training = self.vault / "BJJ" / "Journal"

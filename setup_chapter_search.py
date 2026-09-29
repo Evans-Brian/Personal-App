@@ -73,12 +73,12 @@ def main():
     bjj_root, vault = args.bjj_library or configured_bjj, args.vault or configured_vault
     if not bjj_root.is_dir() or not vault.is_dir():
         raise SystemExit("The BJJ library and vault folders must exist. Pass both paths explicitly.")
-    summarizer = OpenAIChapterSummarizer()
+    library = BJJLibrary(bjj_root, vault)
+    summarizer = OpenAIChapterSummarizer(api_key=library.openai_api_key())
     if not summarizer.available:
         raise SystemExit("Set OPENAI_API_KEY before generating chapter summaries.")
     if not args.skip_embedding_install:
         install_embeddings()
-    library = BJJLibrary(bjj_root, vault)
     result = generate_summaries(library, summarizer)
     rebuilt = library.rebuild_index(require_summaries=True)
     print(json.dumps({"summary_model": OPENAI_SUMMARY_MODEL, **result, "index": rebuilt}, indent=2))

@@ -1,4 +1,4 @@
-"""Windows-user-bound encryption for Oura credentials (never sent to the UI)."""
+"""Windows-user-bound encryption for private local credentials."""
 import ctypes
 from ctypes import wintypes
 import json
@@ -13,7 +13,7 @@ class Blob(ctypes.Structure):
 
 def crypt(raw, decrypt=False):
     if os.name != 'nt':
-        raise ValueError('Oura credential storage currently requires Windows.')
+        raise ValueError('Encrypted credential storage currently requires Windows.')
     buffer = ctypes.create_string_buffer(raw)
     source = Blob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
     output = Blob()
@@ -23,7 +23,7 @@ def crypt(raw, decrypt=False):
                    ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
     fn.restype = wintypes.BOOL
     if not fn(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(output)):
-        raise ValueError('Windows could not unlock or store Oura credentials for this user.')
+        raise ValueError('Windows could not unlock or store credentials for this user.')
     try:
         return ctypes.string_at(output.data, output.size)
     finally:

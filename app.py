@@ -84,6 +84,11 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                             self.headers.get('Origin', remote_origin) == remote_origin)
             return host in local_hosts and self.headers.get('Origin', f'http://{host}') == f'http://{host}'
 
+        def local_only(self):
+            host = self.headers.get('Host')
+            local_hosts = (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}')
+            return host in local_hosts and self.headers.get('Origin', f'http://{host}') == f'http://{host}'
+
         def serve_bjj_media(self, media_id):
             try:
                 _, path = bjj.entry(media_id)
@@ -158,6 +163,10 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, {'notes': bjj.notes()})
                 if url.path == '/api/bjj/training':
                     return self.respond(200, bjj.training(parse_qs(url.query).get('date', [''])[0]))
+                if url.path == '/api/bjj/ai-credentials':
+                    if not self.local_only():
+                        return self.respond(403, {"error": "AI credentials can only be managed on this computer."})
+                    return self.respond(200, bjj.ai_status())
                 if url.path.startswith('/api/bjj/media/'):
                     return self.serve_bjj_media(url.path.removeprefix('/api/bjj/media/'))
                 if url.path == '/api/oura/status':
@@ -209,7 +218,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(503, {'error': 'Local transcription could not finish. Try recording again.'})
             if not self.allowed() or self.headers.get("Content-Type") != "application/json":
                 return self.respond(403, {"error": "Only same-origin JSON requests are accepted."})
-            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect', '/api/bjj/note', '/api/bjj/training'):
+            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect', '/api/bjj/note', '/api/bjj/training', '/api/bjj/ai-credentials'):
                 return self.respond(404, {"error": "Not found"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -226,6 +235,10 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, bjj.save_note(data))
                 if self.path == '/api/bjj/training':
                     return self.respond(200, bjj.save_training(data))
+                if self.path == '/api/bjj/ai-credentials':
+                    if not self.local_only():
+                        return self.respond(403, {"error": "AI credentials can only be managed on this computer."})
+                    return self.respond(200, bjj.save_ai_credentials(data))
                 if self.path == '/api/oura/setup':
                     sync.configure(data.get('client_id'), data.get('client_secret'))
                     return self.respond(200, sync.status())
