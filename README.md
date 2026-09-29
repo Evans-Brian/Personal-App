@@ -82,7 +82,7 @@ For a later AI feature, use `Journal.read_range(start, end)` and `OuraStore.read
 
 ## BJJ library
 
-The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, exact transcript search, related-idea search, timestamped study notes, and a daily training journal. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal`.
+The BJJ tab adds local course cards, range-streaming playback, chapter jumps, synchronized transcripts, exact transcript search, related-idea search, timestamped study notes, and a daily training journal. Transcript search defaults to Related ideas, with Exact terms available from the search mode selector. While a video is playing, hold the right side of the video with mouse or touch to temporarily speed playback; set that hold speed from the player's ellipsis menu. Study notes are Markdown under `BJJ/Study Notes` in the configured vault, with `bjj://` links that reopen the same video moment. Training entries are Markdown under `BJJ/Journal` and contain General Notes, Session Goals, Problems encountered, and What worked.
 
 Set both vault and library paths in the ignored `config.local.json`:
 
@@ -100,6 +100,10 @@ Set both vault and library paths in the ignored `config.local.json`:
 ```powershell
 python -m unittest discover -s tests -v
 node --check static/app.js
+node --check static/bjj.js
+node --check static/plans.js
+node --check static/restaurants.js
+node --check static/voice.js
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; only the Oura credential file is encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
@@ -157,11 +161,11 @@ After saving an evening cooldown, **Submit** puts the unchecked task away from t
 ## Private access from other devices
 The app can stay bound to localhost behind Tailscale Serve. Install Tailscale on each device and sign in to the same personal account. Use `tailscale serve --bg http://127.0.0.1:8765` for private HTTPS; do not enable Funnel. In the ignored `config.local.json`, `remote_access` contains `origin` (the exact HTTPS ts.net address, no trailing slash) and `login` (the authorized Tailscale account). Restart the journal after configuration. Requests must match the configured account identity supplied by Serve and the exact origin. Keep the backend bound to loopback; never expose it directly or trust identity headers from an untrusted proxy.
 
-On iPhone, install Tailscale, connect, then open the private address in Safari and use Share → Add to Home Screen. The host PC must remain powered on and awake. The journal's scheduled task currently starts at Windows sign-in, so sign into Windows after a reboot. Tailscale runs unattended; Serve persists in the background. Oura reconnect/setup still uses the host PC's localhost callback, so perform that on the host; synced stats are available remotely. Browser drafts are separate for each device and URL; save before switching devices. To disable private sharing: `tailscale serve --https=443 off`.
+On iPhone, install Tailscale, connect, then open the private address in Safari and use Share → Add to Home Screen. Phone-sized first visits open the BJJ page; use the navigation to switch back to Journal. The host PC must remain powered on and awake. The journal's scheduled task currently starts at Windows sign-in, so sign into Windows after a reboot. Tailscale runs unattended; Serve persists in the background. Oura reconnect/setup still uses the host PC's localhost callback, so perform that on the host; synced stats are available remotely. Browser drafts are separate for each device and URL; save before switching devices. To disable private sharing: `tailscale serve --https=443 off`.
 
 ## Local voice dictation
 Run `python setup_voice.py` once on the hosting PC to install faster-whisper and download the English base model into ignored `data/` folders. No paid API or API key is used. The model loads lazily on the CPU and remains in memory until the app exits. Audio is processed in memory and is never written into journal files or audio logs.
 
-Microphone buttons beside journal, task, people, and restaurant text fields open a recorder. Allow microphone access, speak (up to two minutes), tap Stop, and the transcript automatically appends to the original field. Edit it directly there if needed. Existing field text is preserved; normal Save is still required. Cancel discards the panel. Use the private HTTPS URL on iPhone; localhost also works on the host PC. Only the hosting PC needs the transcription model. Permission denial, unsupported recording formats, busy transcription, and connection errors are displayed in the panel. The model is English-only initially; occasional transcription errors need review. Closing the page discards recordings and any transcript not yet added to a field.
+Microphone buttons beside journal, task, people, restaurant, BJJ search, and BJJ training journal text fields open a recorder. Allow microphone access, speak (up to two minutes), tap Stop, and the transcript automatically appends to the original field. Edit it directly there if needed. Existing field text is preserved; normal Save is still required. Cancel discards the panel. Use the private HTTPS URL on iPhone; localhost also works on the host PC. Only the hosting PC needs the transcription model. Permission denial, unsupported recording formats, busy transcription, and connection errors are displayed in the panel. The model is English-only initially; occasional transcription errors need review. Closing the page discards recordings and any transcript not yet added to a field.
 
 Morning and evening tasks have an × button in the top right. Confirm deletion, then save the current entry. Deletion is recovered with drafts, prevents carry-forward, and does not mark tasks completed. Previously archived completion history remains intact.
