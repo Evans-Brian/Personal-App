@@ -14,6 +14,13 @@ from hashlib import sha256
 from pathlib import Path
 
 from embeddings import EmbeddingUnavailable, LocalBGEEmbedder, blob_to_vector, vector_to_blob
+from chapter_ai import (
+    AIServiceUnavailable,
+    JEV_SHORTLIST,
+    OPENAI_SUMMARY_MODEL,
+    SUMMARY_PROMPT_VERSION,
+    JevReranker,
+)
 from journal import Conflict
 
 COURSES = (
@@ -83,14 +90,16 @@ def _text_windows(text, target_words=160, overlap_words=30):
 
 
 class BJJLibrary:
-    def __init__(self, root, vault, embedder=None):
+    def __init__(self, root, vault, embedder=None, reranker=None):
         self.root = Path(root).resolve()
         self.vault = Path(vault).resolve()
         self.media_root = self.root / "media"
         self.transcript_root = self.root / "transcripts"
         self.index_path = self.root / "index" / "bjj.sqlite3"
+        self.summary_path = self.root / "work" / "chapter-summaries.json"
         self.manifest_path = self.root / "manifest.json"
         self.embedder = embedder or LocalBGEEmbedder()
+        self.reranker = reranker or JevReranker()
         self.training_lock = threading.Lock()
 
     def manifest(self):
@@ -174,7 +183,8 @@ class BJJLibrary:
               media_sha256 TEXT NOT NULL, embedding BLOB NOT NULL,
               source_type TEXT NOT NULL DEFAULT 'bjj_transcript', source_path TEXT NOT NULL DEFAULT '',
               journal_date TEXT NOT NULL DEFAULT '', section TEXT NOT NULL DEFAULT '',
-              title TEXT NOT NULL DEFAULT '', embedding_model TEXT NOT NULL DEFAULT 'hash-v1'
+              title TEXT NOT NULL DEFAULT '', embedding_model TEXT NOT NULL DEFAULT 'hash-v1',
+              content TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT ''
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(id UNINDEXED, excerpt, chapter, instructor, course_id);
             CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -184,6 +194,7 @@ class BJJLibrary:
             "source_type": "TEXT NOT NULL DEFAULT 'bjj_transcript'", "source_path": "TEXT NOT NULL DEFAULT ''",
             "journal_date": "TEXT NOT NULL DEFAULT ''", "section": "TEXT NOT NULL DEFAULT ''",
             "title": "TEXT NOT NULL DEFAULT ''", "embedding_model": "TEXT NOT NULL DEFAULT 'hash-v1'",
+            "content": "TEXT NOT NULL DEFAULT ''", "summary": "TEXT NOT NULL DEFAULT ''",
         }
         for name, definition in migrations.items():
             if name not in columns:
@@ -200,8 +211,14 @@ class BJJLibrary:
         connection.commit()
         return connection
 
-    def rebuild_index(self):
+    def rebuild_index(self, require_summaries=False):
         documents = [*self._transcript_documents(), *self._vault_documents()]
+        transcript_documents = [document for document in documents if document["source_type"] == "bjj_transcript"]
+        missing_summaries = [document["id"] for document in transcript_documents if not document.get("summary")]
+        if require_summaries and missing_summaries:
+            raise RuntimeError(
+                f"{len(missing_summaries)} chapters are missing AI summaries. Run setup_chapter_search.py with OPENAI_API_KEY set."
+            )
         vectors, embedding_model = self._embed_documents(documents)
         with closing(self.connect()) as connection:
             with connection:
@@ -210,9 +227,10 @@ class BJJLibrary:
                 connection.execute("DELETE FROM index_meta")
                 for document, vector in zip(documents, vectors):
                     self._insert_document(connection, document, vector, embedding_model)
-                metadata = {"schema_version": "3", "embedding_model": self.embedder.version,
+                metadata = {"schema_version": "4", "embedding_model": self.embedder.version,
                             "embedding_dimensions": str(self.embedder.dimensions), "chunks": str(len(documents)),
-                            "built_at": _utc_now()}
+                            "built_at": _utc_now(), "chapter_summaries": str(len(transcript_documents) - len(missing_summaries)),
+                            "summary_model": OPENAI_SUMMARY_MODEL if transcript_documents and not missing_summaries else ""}
                 if not embedding_model:
                     metadata["embedding_model"] = ""
                     metadata["embedding_dimensions"] = "0"
@@ -226,9 +244,13 @@ class BJJLibrary:
     def _embed_documents(self, documents, semantic=True):
         if not semantic:
             return [self._empty_vector() for _ in documents], ""
-        texts = [document["embedding_text"] for document in documents]
         try:
-            vectors = self.embedder.embed_documents(texts)
+            if hasattr(self.embedder, "embed_document_parts"):
+                vectors = self.embedder.embed_document_parts([
+                    document.get("embedding_parts", [document["embedding_text"]]) for document in documents
+                ])
+            else:
+                vectors = self.embedder.embed_documents([document["embedding_text"] for document in documents])
         except EmbeddingUnavailable:
             return [self._empty_vector() for _ in documents], ""
         if len(vectors) != len(documents) or any(len(vector) != self.embedder.dimensions for vector in vectors):
@@ -238,43 +260,63 @@ class BJJLibrary:
     def _empty_vector(self):
         return [0.0] * self.embedder.dimensions
 
-    def _transcript_documents(self):
+    def _summary_cache(self):
+        if not self.summary_path.is_file():
+            return {}
+        data = json.loads(self.summary_path.read_text(encoding="utf-8"))
+        summaries = data.get("summaries", {}) if isinstance(data, dict) else {}
+        return summaries if isinstance(summaries, dict) else {}
+
+    def chapter_sources(self):
         documents = []
+        summaries = self._summary_cache()
         for item in self.manifest()["media"]:
             course = next((value for value in COURSES if value["id"] == item.get("course_id")), None)
             if not course:
                 continue
             segments = self.transcript(item["id"])["segments"]
             chapters = {chapter.get("id"): chapter.get("title", chapter.get("id")) for chapter in item.get("chapters", [])}
-            index = 0
-            while index < len(segments):
-                chapter_id = segments[index].get("chapter_id") or "Unchaptered"
-                same_chapter = []
-                while index < len(segments) and (segments[index].get("chapter_id") or "Unchaptered") == chapter_id:
-                    same_chapter.append(segments[index]); index += 1
-                offset = 0
-                while offset < len(same_chapter):
-                    group, word_count, cursor = [], 0, offset
-                    while cursor < len(same_chapter) and word_count < 160:
-                        segment = same_chapter[cursor]
-                        text = (segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip()
-                        group.append(segment); word_count += len(_words(text)); cursor += 1
-                    excerpt = " ".join((segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip() for segment in group).strip()
-                    if excerpt:
-                        title = chapters.get(chapter_id, str(chapter_id))
-                        documents.append({
-                            "id": f"{item['id']}:{int(group[0].get('segment_id', offset)):06d}",
-                            "media_id": item["id"], "course_id": item["course_id"], "instructor": course["instructor"],
-                            "volume": int(item["volume"]), "chapter": str(chapter_id), "start_seconds": float(group[0]["start_seconds"]),
-                            "end_seconds": float(group[-1]["end_seconds"]), "excerpt": excerpt, "media_sha256": item.get("sha256", ""),
-                            "source_type": "bjj_transcript", "source_path": item.get("transcript", ""), "journal_date": "",
-                            "section": title, "title": f"{course['title']} · Volume {item['volume']} · {title}",
-                            "embedding_text": f"BJJ instructional. {course['title']}. {title}. {excerpt}",
-                        })
-                    if cursor >= len(same_chapter):
-                        break
-                    offset = max(offset + 1, cursor - 1)
+            groups = []
+            for segment in segments:
+                chapter_id = segment.get("chapter_id") or "Unchaptered"
+                if not groups or groups[-1][0] != chapter_id:
+                    groups.append((chapter_id, []))
+                groups[-1][1].append(segment)
+            for chapter_id, group in groups:
+                content = " ".join(
+                    (segment.get("corrected_text") or segment.get("raw_text") or segment.get("text") or "").strip()
+                    for segment in group
+                ).strip()
+                if not content:
+                    continue
+                title = chapters.get(chapter_id, str(chapter_id))
+                identifier = f"{item['id']}:{chapter_id}"
+                summary_entry = summaries.get(identifier, {})
+                digest = sha256(content.encode("utf-8")).hexdigest()
+                summary = ""
+                if (summary_entry.get("source_sha256") == digest
+                        and summary_entry.get("model") == OPENAI_SUMMARY_MODEL
+                        and summary_entry.get("prompt_version") == SUMMARY_PROMPT_VERSION):
+                    summary = str(summary_entry.get("summary", "")).strip()
+                display = summary or content
+                documents.append({
+                    "id": identifier, "media_id": item["id"], "course_id": item["course_id"],
+                    "instructor": course["instructor"], "volume": int(item["volume"]), "chapter": str(chapter_id),
+                    "start_seconds": float(group[0]["start_seconds"]), "end_seconds": float(group[-1]["end_seconds"]),
+                    "excerpt": display, "content": content, "summary": summary, "search_text": content,
+                    "media_sha256": item.get("sha256", ""), "source_type": "bjj_transcript",
+                    "source_path": item.get("transcript", ""), "journal_date": "", "section": title,
+                    "title": f"{course['title']} · Volume {item['volume']} · {title}",
+                    "embedding_text": f"BJJ instructional chapter. {course['title']}. {title}. {display}",
+                    "embedding_parts": [
+                        f"BJJ instructional chapter. {course['title']}. {title}. {part}"
+                        for part in ([summary] if summary else []) + _text_windows(content, target_words=160, overlap_words=30)
+                    ],
+                })
         return documents
+
+    def _transcript_documents(self):
+        return self.chapter_sources()
 
     def _vault_documents(self):
         documents = []
@@ -329,13 +371,15 @@ class BJJLibrary:
         if document.get("source_type") not in INDEX_SOURCE_TYPES:
             raise ValueError("Only BJJ material can be added to the BJJ search index.")
         columns = ("id", "media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
-                   "excerpt", "media_sha256", "embedding", "source_type", "source_path", "journal_date", "section", "title", "embedding_model")
+                   "excerpt", "media_sha256", "embedding", "source_type", "source_path", "journal_date", "section", "title",
+                   "embedding_model", "content", "summary")
         values = [document.get(column, "") for column in columns]
         values[10] = vector_to_blob(vector)
-        values[-1] = self.embedder.version if embedding_model is None else embedding_model
+        values[16] = self.embedder.version if embedding_model is None else embedding_model
         connection.execute(f"INSERT OR REPLACE INTO chunks({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", values)
         connection.execute("INSERT INTO chunks_fts(id,excerpt,chapter,instructor,course_id) VALUES (?,?,?,?,?)",
-                           (document["id"], document["excerpt"], document["section"], document["instructor"], document["course_id"]))
+                           (document["id"], document.get("search_text", document["excerpt"]), document["section"],
+                            document["instructor"], document["course_id"]))
 
     def refresh_journal(self, path, source_type="bjj_training"):
         """Refresh one saved Markdown file without rebuilding every transcript."""
@@ -403,8 +447,14 @@ class BJJLibrary:
                 for rank, row in enumerate(lexical, 1):
                     combined[row["id"]] = combined.get(row["id"], 0) + 0.15 / (60 + rank)
                     rows_by_id[row["id"]] = row
-                ranked_ids = sorted(combined, key=combined.get, reverse=True)[:limit]
-                return [self._result(rows_by_id[row_id], combined[row_id]) for row_id in ranked_ids]
+                ranked_ids = sorted(combined, key=combined.get, reverse=True)[:JEV_SHORTLIST]
+                candidates = [self._result(rows_by_id[row_id], combined[row_id], internal=True) for row_id in ranked_ids]
+                if self.reranker.available:
+                    try:
+                        candidates = self.reranker.rank(query, candidates)
+                    except AIServiceUnavailable:
+                        pass
+                return [self._public_result(candidate) for candidate in candidates[:limit]]
             rows = self._fts_rows(connection, query, where, values, limit)
             return [self._result(row, -float(row["score"])) for row in rows]
 
@@ -421,10 +471,17 @@ class BJJLibrary:
         ).fetchall()
 
     @staticmethod
-    def _result(row, score):
+    def _result(row, score, internal=False):
         keys = ("media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
-                "excerpt", "source_type", "source_path", "journal_date", "section", "title")
-        return {key: row[key] for key in keys} | {"score": score}
+                "excerpt", "source_type", "source_path", "journal_date", "section", "title", "summary")
+        result = {key: row[key] for key in keys} | {"score": score}
+        if internal:
+            result["_content"] = row["content"] or row["excerpt"]
+        return result
+
+    @staticmethod
+    def _public_result(result):
+        return {key: value for key, value in result.items() if not key.startswith("_")}
 
     def save_note(self, data):
         media_id = data.get("media_id")

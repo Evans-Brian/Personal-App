@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
-MODEL_VERSION = "bge-small-en-v1.5-fastembed-v2"
+MODEL_VERSION = "bge-small-en-v1.5-fastembed-chapter-v3"
 MODEL_DIMENSIONS = 384
 APP_ROOT = Path(__file__).resolve().parent
 RUNTIME_ROOT = APP_ROOT / "data" / "embedding-runtime"
@@ -88,6 +88,27 @@ class LocalBGEEmbedder:
             return []
         with self._lock:
             return [list(vector) for vector in self._load().embed(texts, batch_size=32)]
+
+    def embed_document_parts(self, document_parts):
+        """Mean-pool bounded passages into one normalized vector per document."""
+        groups = [[str(part) for part in parts if str(part).strip()] for parts in document_parts]
+        flat = [part for parts in groups for part in parts]
+        if not flat:
+            return [[] for _ in groups]
+        with self._lock:
+            vectors = [list(vector) for vector in self._load().embed(flat, batch_size=32)]
+        pooled = []
+        cursor = 0
+        for parts in groups:
+            selected = vectors[cursor:cursor + len(parts)]
+            cursor += len(parts)
+            if not selected:
+                pooled.append([0.0] * self.dimensions)
+                continue
+            average = [sum(values) / len(selected) for values in zip(*selected)]
+            norm = math.sqrt(sum(value * value for value in average)) or 1.0
+            pooled.append([value / norm for value in average])
+        return pooled
 
     def embed_query(self, text):
         with self._lock:

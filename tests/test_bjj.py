@@ -5,12 +5,14 @@ import tempfile
 import threading
 import unittest
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
 
 import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary
+from chapter_ai import OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION
 from embeddings import EmbeddingUnavailable, HashEmbedder
 from journal import Conflict
 from official_chapters import chapters
@@ -27,6 +29,17 @@ class UnavailableEmbedder(HashEmbedder):
 
     def embed_query(self, text):
         raise EmbeddingUnavailable("missing test model")
+
+
+class FakeReranker:
+    available = True
+
+    def __init__(self):
+        self.calls = []
+
+    def rank(self, query, candidates):
+        self.calls.append((query, list(candidates)))
+        return list(reversed(candidates))
 
 
 class BJJTests(unittest.TestCase):
@@ -59,6 +72,66 @@ class BJJTests(unittest.TestCase):
         exact = self.library.search("underhook")
         self.assertEqual(exact[0]["media_id"], "octopus-guard-2-v01")
         self.assertEqual(self.library.search("octopus position", semantic=True)[0]["start_seconds"], 0)
+
+    def test_transcripts_are_indexed_as_one_document_per_chapter(self):
+        path = self.root / self.entry["transcript"]
+        path.write_text(json.dumps({"segments": [
+            {"segment_id": 0, "start_seconds": 0, "end_seconds": 2, "corrected_text": "First detail.", "chapter_id": "intro"},
+            {"segment_id": 1, "start_seconds": 2, "end_seconds": 4, "corrected_text": "Second detail.", "chapter_id": "intro"},
+            {"segment_id": 2, "start_seconds": 4, "end_seconds": 8, "corrected_text": "Next technique.", "chapter_id": "finish"},
+        ]}), encoding="utf-8")
+        self.entry["chapters"].append({"id": "finish", "title": "Finish", "start_seconds": 4})
+        (self.root / "manifest.json").write_text(json.dumps({"version": 1, "media": [self.entry]}), encoding="utf-8")
+        rebuilt = self.library.rebuild_index()
+        self.assertEqual(rebuilt["sources"]["bjj_transcript"], 2)
+        connection = self.library.connect()
+        try:
+            rows = connection.execute(
+                "SELECT chapter,start_seconds,end_seconds,content FROM chunks WHERE source_type='bjj_transcript' ORDER BY start_seconds"
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertEqual((rows[0]["chapter"], rows[0]["start_seconds"], rows[0]["end_seconds"]), ("intro", 0, 4))
+        self.assertEqual(rows[0]["content"], "First detail. Second detail.")
+
+    def test_valid_summary_is_embedded_and_shown_but_full_transcript_stays_searchable(self):
+        path = self.root / self.entry["transcript"]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["segments"][0]["corrected_text"] += " transcriptiontoken"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        source = self.library.chapter_sources()[0]
+        self.library.summary_path.parent.mkdir(parents=True)
+        self.library.summary_path.write_text(json.dumps({"version": 1, "summaries": {
+            source["id"]: {
+                "source_sha256": sha256(source["content"].encode()).hexdigest(),
+                "model": OPENAI_SUMMARY_MODEL,
+                "prompt_version": SUMMARY_PROMPT_VERSION,
+                "summary": "Maintain an underhook and control distance from octopus guard.",
+            }
+        }}), encoding="utf-8")
+        self.library.rebuild_index(require_summaries=True)
+        result = self.library.search("transcriptiontoken")
+        self.assertEqual(result[0]["summary"], "Maintain an underhook and control distance from octopus guard.")
+        self.assertEqual(result[0]["excerpt"], result[0]["summary"])
+
+    def test_semantic_search_sends_exactly_top_fifteen_candidates_to_reranker(self):
+        chapters = []
+        segments = []
+        for index in range(16):
+            chapter_id = f"c{index:02d}"
+            chapters.append({"id": chapter_id, "title": f"Chapter {index}", "start_seconds": index})
+            segments.append({"segment_id": index, "start_seconds": index, "end_seconds": index + 1,
+                             "corrected_text": f"guard technique variation {index}", "chapter_id": chapter_id})
+        self.entry["chapters"] = chapters
+        (self.root / "manifest.json").write_text(json.dumps({"version": 1, "media": [self.entry]}), encoding="utf-8")
+        (self.root / self.entry["transcript"]).write_text(json.dumps({"segments": segments}), encoding="utf-8")
+        reranker = FakeReranker()
+        self.library = BJJLibrary(self.root, self.vault, embedder=HashEmbedder(), reranker=reranker)
+        self.library.rebuild_index()
+        results = self.library.search("guard technique", semantic=True, limit=12)
+        self.assertEqual(len(reranker.calls[0][1]), 15)
+        self.assertEqual(len(results), 12)
+        self.assertTrue(all("_content" not in result for result in results))
 
     def test_hybrid_index_includes_training_but_excludes_personal_journals(self):
         personal = self.vault / "Journal"

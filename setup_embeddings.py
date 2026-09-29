@@ -17,11 +17,7 @@ def configured_paths():
     return Path(config.get("bjj_library", ROOT / "data" / "bjj-library")), Path(config.get("vault", ROOT / "demo-vault"))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bjj-library", type=Path)
-    parser.add_argument("--vault", type=Path)
-    args = parser.parse_args()
+def install_embeddings():
     RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     MODEL_ROOT.mkdir(parents=True, exist_ok=True)
     if not (RUNTIME_ROOT / "fastembed").is_dir():
@@ -36,6 +32,14 @@ def main():
     vector = list(next(iter(model.query_embed("half guard underhook"))))
     if len(vector) != 384:
         raise RuntimeError(f"Expected a 384-dimensional embedding, received {len(vector)}.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bjj-library", type=Path)
+    parser.add_argument("--vault", type=Path)
+    args = parser.parse_args()
+    install_embeddings()
 
     from bjj import BJJLibrary
     configured_bjj, configured_vault = configured_paths()
