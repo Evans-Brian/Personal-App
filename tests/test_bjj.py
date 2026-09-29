@@ -10,9 +10,21 @@ from unittest.mock import patch
 import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary
-from embeddings import HashEmbedder
+from embeddings import EmbeddingUnavailable, HashEmbedder
 from official_chapters import chapters
 from transcribe_bjj import chapter_at, normalize_segments, outputs, transcript_output_complete
+
+
+class UnavailableEmbedder(HashEmbedder):
+    version = "missing-bge"
+    dimensions = 384
+    installed = False
+
+    def embed_documents(self, texts):
+        raise EmbeddingUnavailable("missing test model")
+
+    def embed_query(self, text):
+        raise EmbeddingUnavailable("missing test model")
 
 
 class BJJTests(unittest.TestCase):
@@ -72,6 +84,21 @@ class BJJTests(unittest.TestCase):
         path = folder / "2026-09-28.md"
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nFrames helped me stay calm.\n", encoding="utf-8")
         self.library.rebuild_index()
+        self.assertEqual(self.library.search("frames", source="journal")[0]["journal_date"], "2026-09-28")
+        path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nPosture helped me stay balanced.\n", encoding="utf-8")
+        self.assertFalse(self.library.refresh_journal(path)["skipped"])
+        self.assertEqual(self.library.search("frames", source="journal"), [])
+        self.assertEqual(self.library.search("posture", source="journal")[0]["journal_date"], "2026-09-28")
+
+    def test_exact_index_and_journal_refresh_do_not_require_embeddings(self):
+        self.library = BJJLibrary(self.root, self.vault, embedder=UnavailableEmbedder())
+        folder = self.vault / "Journal"
+        folder.mkdir(parents=True)
+        path = folder / "2026-09-28.md"
+        path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nFrames helped me stay calm.\n", encoding="utf-8")
+        rebuilt = self.library.rebuild_index()
+        self.assertEqual(rebuilt["embedding_model"], "")
+        self.assertEqual(self.library.search("underhook")[0]["media_id"], "octopus-guard-2-v01")
         self.assertEqual(self.library.search("frames", source="journal")[0]["journal_date"], "2026-09-28")
         path.write_text("# Day\n\n## Morning\n\n### Reflection\n\nPosture helped me stay balanced.\n", encoding="utf-8")
         self.assertFalse(self.library.refresh_journal(path)["skipped"])

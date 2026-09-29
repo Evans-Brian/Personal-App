@@ -9,7 +9,7 @@ from contextlib import closing
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from embeddings import LocalBGEEmbedder, blob_to_vector, vector_to_blob
+from embeddings import EmbeddingUnavailable, LocalBGEEmbedder, blob_to_vector, vector_to_blob
 
 COURSES = (
     {"id": "down-right-sloppy-half-butterfly", "title": "Down Right Sloppy Half Butterfly", "instructor": "Eoghan O'Flanagan"},
@@ -186,25 +186,41 @@ class BJJLibrary:
 
     def rebuild_index(self):
         documents = [*self._transcript_documents(), *self._vault_documents()]
-        vectors = self.embedder.embed_documents([document.pop("embedding_text") for document in documents])
-        if len(vectors) != len(documents) or any(len(vector) != self.embedder.dimensions for vector in vectors):
-            raise RuntimeError("The embedding model returned an unexpected number or size of vectors.")
+        vectors, embedding_model = self._embed_documents(documents)
         with closing(self.connect()) as connection:
             with connection:
                 connection.execute("DELETE FROM chunks")
                 connection.execute("DELETE FROM chunks_fts")
                 connection.execute("DELETE FROM index_meta")
                 for document, vector in zip(documents, vectors):
-                    self._insert_document(connection, document, vector)
+                    self._insert_document(connection, document, vector, embedding_model)
                 metadata = {"schema_version": "2", "embedding_model": self.embedder.version,
                             "embedding_dimensions": str(self.embedder.dimensions), "chunks": str(len(documents)),
                             "built_at": _utc_now()}
+                if not embedding_model:
+                    metadata["embedding_model"] = ""
+                    metadata["embedding_dimensions"] = "0"
                 connection.executemany("INSERT INTO index_meta(key,value) VALUES (?,?)", metadata.items())
         counts = {}
         for document in documents:
             counts[document["source_type"]] = counts.get(document["source_type"], 0) + 1
-        return {"chunks": len(documents), "sources": counts, "embedding_model": self.embedder.version,
+        return {"chunks": len(documents), "sources": counts, "embedding_model": embedding_model,
                 "dimensions": self.embedder.dimensions}
+
+    def _embed_documents(self, documents, semantic=True):
+        if not semantic:
+            return [self._empty_vector() for _ in documents], ""
+        texts = [document["embedding_text"] for document in documents]
+        try:
+            vectors = self.embedder.embed_documents(texts)
+        except EmbeddingUnavailable:
+            return [self._empty_vector() for _ in documents], ""
+        if len(vectors) != len(documents) or any(len(vector) != self.embedder.dimensions for vector in vectors):
+            raise RuntimeError("The embedding model returned an unexpected number or size of vectors.")
+        return vectors, self.embedder.version
+
+    def _empty_vector(self):
+        return [0.0] * self.embedder.dimensions
 
     def _transcript_documents(self):
         documents = []
@@ -295,12 +311,12 @@ class BJJLibrary:
                 })
         return documents
 
-    def _insert_document(self, connection, document, vector):
+    def _insert_document(self, connection, document, vector, embedding_model=None):
         columns = ("id", "media_id", "course_id", "instructor", "volume", "chapter", "start_seconds", "end_seconds",
                    "excerpt", "media_sha256", "embedding", "source_type", "source_path", "journal_date", "section", "title", "embedding_model")
         values = [document.get(column, "") for column in columns]
         values[10] = vector_to_blob(vector)
-        values[-1] = self.embedder.version
+        values[-1] = self.embedder.version if embedding_model is None else embedding_model
         connection.execute(f"INSERT OR REPLACE INTO chunks({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", values)
         connection.execute("INSERT INTO chunks_fts(id,excerpt,chapter,instructor,course_id) VALUES (?,?,?,?,?)",
                            (document["id"], document["excerpt"], document["section"], document["instructor"], document["course_id"]))
@@ -313,18 +329,17 @@ class BJJLibrary:
         if not self.index_path.is_file():
             return {"indexed": 0, "skipped": True}
         documents = self._markdown_documents(path, source_type) if path.is_file() else []
-        vectors = self.embedder.embed_documents([document.pop("embedding_text") for document in documents])
         relative = str(path.relative_to(self.vault)).replace("\\", "/")
         with closing(self.connect()) as connection:
             metadata = dict(connection.execute("SELECT key, value FROM index_meta").fetchall())
-            if metadata.get("embedding_model") != self.embedder.version:
-                return {"indexed": 0, "skipped": True}
+            semantic = metadata.get("embedding_model") == self.embedder.version
+            vectors, embedding_model = self._embed_documents(documents, semantic=semantic)
             with connection:
                 identifiers = [row[0] for row in connection.execute("SELECT id FROM chunks WHERE source_path = ?", (relative,))]
                 connection.executemany("DELETE FROM chunks_fts WHERE id = ?", ((identifier,) for identifier in identifiers))
                 connection.execute("DELETE FROM chunks WHERE source_path = ?", (relative,))
                 for document, vector in zip(documents, vectors):
-                    self._insert_document(connection, document, vector)
+                    self._insert_document(connection, document, vector, embedding_model)
                 count = connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
                 connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('chunks',?)", (str(count),))
                 connection.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('updated_at',?)", (_utc_now(),))
