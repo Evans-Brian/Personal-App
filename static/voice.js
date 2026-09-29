@@ -53,7 +53,7 @@
   const enhanced=new WeakSet();
   function enhance(){
     if(active && !active.isConnected)close();
-    document.querySelectorAll('#guided textarea, #guided input[type=text], #entry, #plan-review input[type=text], #people-page textarea, #people-page input[type=text], #restaurants-page textarea, #restaurants-page input[type=text], #bjj-query, #bjj-training-form textarea').forEach(field=>{
+    document.querySelectorAll('#guided textarea, #guided input[type=text], #entry, #plan-review input[type=text], #people-page textarea, #people-page input[type=text], #restaurants-page textarea, #restaurants-page input[type=text], #bjj-page textarea, #bjj-page input:not([type]), #bjj-page input[type=text]').forEach(field=>{
       if(field.closest('.voice-inline') || enhanced.has(field) || field.readOnly || field.type==='password')return;enhanced.add(field);
       const shell=document.createElement('span');shell.className='voice-field-shell';field.insertAdjacentElement('beforebegin',shell);shell.append(field);
       const button=document.createElement('button');button.type='button';button.className='voice-button';button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M18 11v1a6 6 0 0 1-12 0v-1M12 18v3M9 21h6"/></svg>';button.setAttribute('aria-label','Dictate into '+(field.getAttribute('aria-label') || field.labels?.[0]?.textContent || 'this field'));button.title=supported?'Speak instead of typing':'Microphone recording needs Safari or Chrome over HTTPS';button.disabled=!supported;
