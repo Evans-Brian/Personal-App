@@ -1,6 +1,6 @@
 # BJJ implementation and operations
 
-The application keeps source code in Git and all private/generated BJJ data under the ignored, absolute `bjj_library` directory configured in `config.local.json`. The Obsidian vault remains the canonical store for human-written notes.
+The application keeps source code in Git and all private/generated BJJ library data under the ignored, absolute `bjj_library` directory configured in `config.local.json`. Shared optional runtimes and embedding model caches live under ignored `data/` folders. The Obsidian vault remains the canonical store for human-written notes.
 
 ## Data contract
 
@@ -18,7 +18,7 @@ Canonical transcript JSON contains `segments`. Every segment records `course_id`
 
 4. Review the pilot at its beginning, middle, and end; finalize vocabulary and official chapter starts in the manifest.
 5. Run the remaining media IDs sequentially with `python transcribe_bjj.py --root "C:\path\to\your\BJJLibrary" --all`. The JSONL work file is appended segment by segment and a retry resumes after the last completed timestamp. Add `--cpu` for the clean int8 fallback.
-6. Generate hash-cached chapter summaries, install the local BGE runtime/model, and rebuild the idempotent chapter-and-BJJ-notes index:
+6. Generate transcript-hash-cached chapter summaries, install the local BGE runtime/model under `data/`, and rebuild the idempotent chapter-and-BJJ-notes index:
 
    `python setup_chapter_search.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`
 
