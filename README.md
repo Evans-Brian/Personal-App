@@ -73,7 +73,7 @@ This Obsidian Sync workflow edits notes on your phone outside the web interface.
 
 Save checks the file revision and writes via a temporary file and atomic replacement. Stale edits are rejected. An external editor or sync process can still race in the tiny interval between the final check and replacement; this is not a distributed locking system. Avoid simultaneous edits to one note across devices, let Sync finish, and retain backups/version history.
 
-## Oura and future AI queries
+## Oura and AI boundaries
 
 Oura connects through an existing developer app using the `daily` scope only. In Oura's developer portal, add **http://localhost:8765/api/oura/callback** to the app's redirect URIs (preserve existing URIs). Oura requires the literal `localhost` name for HTTP redirects. In the journal's Oura connection settings, enter the client ID and secret, save, then click Connect Oura and authorize the account. Keep the same browser for this flow. Client credentials and rotating tokens are stored in `data/oura-secrets.bin`, encrypted with Windows DPAPI for the signed-in Windows user; they are never returned to the browser. The app sends no journal text to Oura.
 
