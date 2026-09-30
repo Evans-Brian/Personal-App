@@ -22,11 +22,7 @@ Canonical transcript JSON contains `segments`. Every segment records `course_id`
 
    `python summarize_with_codex.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault" --rebuild`
 
-   This is a resumable, one-time use of ChatGPT/Codex subscription capacity. Transcripts are sent to Codex in small batches; summaries and the BGE index remain under the private library. Run `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` first if the local BGE runtime/model is not installed. For an OpenAI API-billed alternative, use:
-
-   `python setup_chapter_search.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"`
-
-   Use `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` to rebuild only the local exact/semantic index. Personal journal files are never ingested.
+   This is a resumable, one-time use of ChatGPT/Codex subscription capacity without an API key. Transcripts are sent to Codex in small batches; summaries and the BGE index remain under the private library. Run `python setup_embeddings.py --bjj-library "C:\path\to\your\BJJLibrary" --vault "C:\path\to\your\ObsidianVault"` first if the local BGE runtime/model is not installed. Rerun that command to rebuild only the local exact/semantic index. Personal journal files are never ingested.
 
 7. Start the journal normally. `/api/bjj/media/<media-id>` supports private same-origin byte ranges; BJJ notes are Markdown under `BJJ/Study Notes` and daily training entries under `BJJ/Journal` in the configured vault.
 
@@ -34,4 +30,4 @@ On Windows, optional private wheels `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`
 
 ## Private-data gate
 
-Before every commit, inspect `git diff --cached --name-only` and reject media, transcripts, subtitle files, model weights, SQLite/index files, work state, logs, vault notes, credentials, or `config.local.json`. Only source, tests, and documentation belong in Git.
+Before every commit, run `python scripts/check_repo_secrets.py --working-tree` and inspect `git diff --cached --name-only`. Reject media, transcripts, subtitle files, model weights, SQLite/index files, work state, logs, vault notes, credentials, or `config.local.json`. Only source, tests, and documentation belong in Git. The `.githooks/pre-push` gate scans outgoing commits; enable it in a new clone with `git config --local core.hooksPath .githooks`.

@@ -1,4 +1,4 @@
-"""Cloud AI boundaries for chapter summaries and Jev re-ranking."""
+"""TypeSafe Jev boundary for chapter re-ranking."""
 from __future__ import annotations
 
 import json
@@ -11,9 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 JEV_MODEL = "jev-1.13.0"
 JEV_SHORTLIST = 15
-OPENAI_SUMMARY_MODEL = "gpt-6-luna"
 CODEX_SUMMARY_MODEL = "codex-gpt-6-luna"
-SUMMARY_PROMPT_VERSION = "bjj-chapter-summary-v1"
 CODEX_PROMPT_VERSION = "codex-bjj-chapter-summary-v1"
 
 
@@ -105,47 +103,3 @@ class JevReranker:
         for candidate, score in zip(candidates, scores):
             candidate["jev_score"] = score
         return sorted(candidates, key=lambda candidate: candidate["jev_score"], reverse=True)
-
-
-class OpenAIChapterSummarizer:
-    """Faithful, compact chapter summaries through the OpenAI Responses API."""
-
-    endpoint = "https://api.openai.com/v1/responses"
-
-    def __init__(self, api_key=None, model=OPENAI_SUMMARY_MODEL):
-        self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
-        self.model = model
-
-    @property
-    def available(self):
-        return bool(self.api_key)
-
-    def summarize(self, title, transcript):
-        if not self.available:
-            raise AIServiceUnavailable("Save an OpenAI key locally or set OPENAI_API_KEY before generating chapter summaries.")
-        payload = {
-            "model": self.model,
-            "store": False,
-            "reasoning": {"effort": "low"},
-            "max_output_tokens": 500,
-            "instructions": (
-                "Summarize a Brazilian jiu-jitsu instructional chapter for semantic search. "
-                "Cut filler, repetition, verbal tics, and setup chatter. Preserve the positions, "
-                "grips, actions, reactions, troubleshooting details, submissions, and decision "
-                "points actually taught. Correct obvious transcription spacing only; never add "
-                "techniques or claims not supported by the transcript. Write one dense paragraph "
-                "of roughly 100-180 words using common BJJ terminology."
-            ),
-            "input": f"Chapter title: {title}\n\nTranscript:\n{transcript}",
-        }
-        response = _post_json(self.endpoint, payload, self.api_key, timeout=120)
-        text = "\n".join(
-            content.get("text", "").strip()
-            for item in response.get("output", [])
-            if item.get("type") == "message"
-            for content in item.get("content", [])
-            if content.get("type") == "output_text" and content.get("text", "").strip()
-        ).strip()
-        if not text:
-            raise AIServiceUnavailable("OpenAI returned no chapter summary text.")
-        return text

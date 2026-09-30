@@ -12,7 +12,7 @@ from unittest.mock import patch
 import prepare_bjj
 from app import make_server
 from bjj import BJJLibrary, default_ai_secret_path
-from chapter_ai import CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL, OPENAI_SUMMARY_MODEL, SUMMARY_PROMPT_VERSION
+from chapter_ai import CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL
 from embeddings import EmbeddingUnavailable, HashEmbedder
 from journal import Conflict
 from official_chapters import chapters
@@ -106,8 +106,8 @@ class BJJTests(unittest.TestCase):
         self.library.summary_path.write_text(json.dumps({"version": 1, "summaries": {
             source["id"]: {
                 "source_sha256": sha256(source["content"].encode()).hexdigest(),
-                "model": OPENAI_SUMMARY_MODEL,
-                "prompt_version": SUMMARY_PROMPT_VERSION,
+                "model": CODEX_SUMMARY_MODEL,
+                "prompt_version": CODEX_PROMPT_VERSION,
                 "summary": "Maintain an underhook and control distance from octopus guard.",
             }
         }}), encoding="utf-8")
@@ -176,11 +176,13 @@ class BJJTests(unittest.TestCase):
 
         secrets = MemorySecrets()
         self.library.ai_secrets = secrets
-        openai_key = "sk-" + "x" * 40
-        status = self.library.save_ai_credentials({"openai_api_key": openai_key})
-        self.assertEqual(status, {"openai_configured": True, "typesafe_configured": False})
-        self.assertEqual(secrets.data["openai_api_key"], openai_key)
-        self.assertNotIn("openai_api_key", status)
+        typesafe_key = "test-" + "x" * 40
+        status = self.library.save_ai_credentials({"typesafe_api_key": typesafe_key})
+        self.assertEqual(status, {"typesafe_configured": True})
+        self.assertEqual(secrets.data["typesafe_api_key"], typesafe_key)
+        self.assertNotIn("typesafe_api_key", status)
+        with self.assertRaisesRegex(ValueError, "Only TypeSafe"):
+            self.library.save_ai_credentials({"other_api_key": typesafe_key})
         with self.assertRaisesRegex(ValueError, "format is invalid"):
             self.library.save_ai_credentials({"typesafe_api_key": "short"})
 

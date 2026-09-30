@@ -17,7 +17,7 @@ from pathlib import Path
 
 from bjj import BJJLibrary
 from chapter_ai import CODEX_PROMPT_VERSION, CODEX_SUMMARY_MODEL
-from setup_chapter_search import _atomic_write, _load
+from chapter_cache import atomic_write, load
 
 
 SCHEMA = {
@@ -76,8 +76,9 @@ def summarize_batch(chapters, model, work_dir, timeout=600):
                            "transcript": item["transcript"]} for item in chapters], ensure_ascii=False)
         )
         environment = os.environ.copy()
-        environment.pop("OPENAI_API_KEY", None)
-        environment.pop("TYPESAFE_API_KEY", None)
+        for name in tuple(environment):
+            if name.endswith("_API_KEY"):
+                environment.pop(name)
         executable = shutil.which("codex.exe") or shutil.which("codex.cmd") or shutil.which("codex")
         if not executable:
             raise RuntimeError("Codex CLI was not found on PATH.")
@@ -118,7 +119,7 @@ def main():
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be positive")
     library = BJJLibrary(args.bjj_library, args.vault)
-    cache = _load(library.summary_path)
+    cache = load(library.summary_path)
     pending = pending_chapters(library, cache)
     total = len(library.chapter_sources())
     print(f"{total} chapters; {len(pending)} need Codex summaries.", flush=True)
@@ -136,7 +137,7 @@ def main():
                 "summary": summaries[source["id"]],
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-        _atomic_write(library.summary_path, cache)
+        atomic_write(library.summary_path, cache)
         print(f"Saved {start + len(batch)}/{len(selected)} selected chapters.", flush=True)
     if args.rebuild and not args.limit:
         result = library.rebuild_index(require_summaries=True)

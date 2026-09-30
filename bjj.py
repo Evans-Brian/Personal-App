@@ -19,8 +19,6 @@ from chapter_ai import (
     CODEX_SUMMARY_MODEL,
     CODEX_PROMPT_VERSION,
     JEV_SHORTLIST,
-    OPENAI_SUMMARY_MODEL,
-    SUMMARY_PROMPT_VERSION,
     JevReranker,
 )
 from journal import Conflict
@@ -117,30 +115,23 @@ class BJJLibrary:
     def ai_status(self):
         credentials = self.ai_secrets.read()
         return {
-            "openai_configured": bool(os.environ.get("OPENAI_API_KEY") or credentials.get("openai_api_key")),
             "typesafe_configured": bool(os.environ.get("TYPESAFE_API_KEY") or credentials.get("typesafe_api_key")),
         }
 
     def save_ai_credentials(self, data):
+        if set(data) - {"typesafe_api_key"}:
+            raise ValueError("Only TypeSafe credentials are accepted.")
         credentials = self.ai_secrets.read()
-        openai_key = str(data.get("openai_api_key") or "").strip()
         typesafe_key = str(data.get("typesafe_api_key") or "").strip()
-        if openai_key:
-            if not openai_key.startswith("sk-") or len(openai_key) > 512:
-                raise ValueError("The OpenAI API key format is invalid.")
-            credentials["openai_api_key"] = openai_key
         if typesafe_key:
             if len(typesafe_key) < 20 or len(typesafe_key) > 512:
                 raise ValueError("The TypeSafe API key format is invalid.")
             credentials["typesafe_api_key"] = typesafe_key
-        if not openai_key and not typesafe_key:
-            raise ValueError("Enter at least one API key.")
+        else:
+            raise ValueError("Enter a TypeSafe API key.")
         self.ai_secrets.write(credentials)
         self.reranker = JevReranker(api_key=os.environ.get("TYPESAFE_API_KEY") or credentials.get("typesafe_api_key", ""))
         return self.ai_status()
-
-    def openai_api_key(self):
-        return os.environ.get("OPENAI_API_KEY") or self.ai_secrets.read().get("openai_api_key", "")
 
     def manifest(self):
         if not self.manifest_path.exists():
@@ -257,7 +248,7 @@ class BJJLibrary:
         missing_summaries = [document["id"] for document in transcript_documents if not document.get("summary")]
         if require_summaries and missing_summaries:
             raise RuntimeError(
-                f"{len(missing_summaries)} chapters are missing AI summaries. Save an OpenAI key locally or set OPENAI_API_KEY, then run setup_chapter_search.py."
+                f"{len(missing_summaries)} chapters are missing AI summaries. Run summarize_with_codex.py to generate them."
             )
         vectors, embedding_model = self._embed_documents(documents)
         with closing(self.connect()) as connection:
@@ -353,10 +344,7 @@ class BJJLibrary:
                 summary_entry = summaries.get(identifier, {})
                 digest = sha256(content.encode("utf-8")).hexdigest()
                 summary = ""
-                valid_version = {
-                    OPENAI_SUMMARY_MODEL: SUMMARY_PROMPT_VERSION,
-                    CODEX_SUMMARY_MODEL: CODEX_PROMPT_VERSION,
-                }.get(summary_entry.get("model"))
+                valid_version = CODEX_PROMPT_VERSION if summary_entry.get("model") == CODEX_SUMMARY_MODEL else None
                 if (summary_entry.get("source_sha256") == digest
                         and valid_version is not None
                         and summary_entry.get("prompt_version") == valid_version):
