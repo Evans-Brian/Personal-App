@@ -44,6 +44,13 @@ class TaskHistoryTests(unittest.TestCase):
         self.assertEqual((rows[0]['created'],rows[0]['completed']),('2026-09-15','2026-09-16'))
         self.assertEqual(len(self.j.task_history(write=True)),1)
 
+    def test_dismissed_carryover_does_not_complete_or_reappear(self):
+        self.save('2026-09-15','morning',self.morning('Read'))
+        self.save('2026-09-15','evening','### Morning plans — evening check-in\n\n- [ ] Read\n')
+        self.save('2026-09-16','morning','<!-- carry-review: '+quote(json.dumps({'2026-09-15:Read':'Deleted'}))+' -->\n')
+        self.assertNotIn('Read',self.j.carryover('2026-09-17')['items'])
+        self.assertEqual(self.j.task_history(),[])
+
     def test_existing_user_file_is_not_overwritten(self):
         target=self.j.vault/'Tasks'/'Completed tasks.md'
         target.parent.mkdir()

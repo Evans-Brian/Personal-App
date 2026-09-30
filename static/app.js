@@ -402,8 +402,13 @@ function renderCarryover(){
   const hint=document.createElement('p');hint.className='small';hint.textContent=`From ${carryData.source}${carryData.reviewed?' · not checked off':' · no saved evening checklist, so completion is unknown'}. Choose what belongs today. Nothing is added automatically.`;panel.append(hint);
   for(const item of (carryData.entries || carryData.items.map(text=>({text,key:carryData.source+':'+text})))){
     const task=item.text, key=item.key, text=task.replace(/^\[If time\] /,'');
+    if(carryChoices[key]==='Deleted')continue;
     const row=document.createElement('div');row.className='carry-row';
     const label=document.createElement('p');label.textContent=text;row.append(label);
+    if(!carryChoices[key]){
+      const remove=document.createElement('button');remove.type='button';remove.className='task-delete';remove.textContent='×';remove.setAttribute('aria-label','Dismiss carried-over task without completing it');
+      remove.addEventListener('click',()=>{if(busy || !confirm('Dismiss this task without completing it? Save your morning entry to keep this change.'))return;carryChoices[key]='Deleted';changed();renderCarryover();});row.append(remove);
+    }
     const doneLabel=document.createElement('label');doneLabel.className='plan-check';
     const done=document.createElement('input');done.type='checkbox';done.checked=carryChoices[key]==='Completed';
     done.disabled=busy || String(carryChoices[key] || '').startsWith('Added');
