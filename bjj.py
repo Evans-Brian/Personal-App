@@ -677,3 +677,38 @@ class BJJLibrary:
             if match:
                 values["session_goals"] = match.group(1).strip()
         return {"date": day, "path": str(path.relative_to(self.vault)), "revision": sha256(raw).hexdigest(), **values}
+
+    def training_history(self, query="", rating="", limit=20, offset=0):
+        query = str(query or "").strip().casefold()
+        rating = str(rating or "").strip()
+        if len(query) > 300:
+            raise ValueError("Search training notes with up to 300 characters.")
+        if rating and rating not in {"1", "2", "3", "4", "5"}:
+            raise ValueError("Session rating must be from 1 to 5.")
+        limit, offset = int(limit), int(offset)
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("Invalid training history page.")
+        folder = self.vault / "BJJ" / "Journal"
+        if not folder.is_dir():
+            return {"entries": [], "total": 0}
+        entries = []
+        fields = ("general_notes", "session_goals", "problems", "worked")
+        for path in sorted(folder.glob("*.md"), reverse=True):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.md", path.name) or not path.is_file():
+                continue
+            try:
+                day = _safe_day(path.stem)
+                if not path.resolve().is_relative_to(folder.resolve()):
+                    continue
+                entry = self.training(day)
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if rating and entry["rating"] != rating:
+                continue
+            if query and query not in " ".join(entry[key] for key in fields).casefold():
+                continue
+            preview = next((" ".join(entry[key].split()) for key in fields if entry[key].strip()), "No notes recorded")
+            if len(preview) > 150:
+                preview = preview[:147].rstrip() + "…"
+            entries.append({"date": day, "rating": entry["rating"], "preview": preview})
+        return {"entries": entries[offset:offset + limit], "total": len(entries)}

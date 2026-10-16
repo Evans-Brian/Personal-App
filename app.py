@@ -164,6 +164,12 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, {'notes': bjj.notes()})
                 if url.path == '/api/bjj/training':
                     return self.respond(200, bjj.training(parse_qs(url.query).get('date', [''])[0]))
+                if url.path == '/api/bjj/training-history':
+                    query = parse_qs(url.query)
+                    return self.respond(200, bjj.training_history(
+                        query.get('q', [''])[0], query.get('rating', [''])[0],
+                        query.get('limit', ['20'])[0], query.get('offset', ['0'])[0],
+                    ))
                 if url.path == '/api/bjj/ai-credentials':
                     if not self.local_only():
                         return self.respond(403, {"error": "AI credentials can only be managed on this computer."})

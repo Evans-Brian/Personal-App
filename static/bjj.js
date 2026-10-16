@@ -53,7 +53,7 @@
     button.append(node('strong',label),node('span',excerpt));
     button.addEventListener('click',()=>{
       if(result.source_type==='bjj_transcript'||result.source_type==='bjj_note'){const course=library.courses.find(c=>c.id===result.course_id),item=course?.volumes.find(v=>v.id===result.media_id);if(course&&item)openVolume(course,item,result.start_seconds);return;}
-      if(result.source_type==='bjj_training'&&result.journal_date){$('bjj-training-date').value=result.journal_date;$('bjj-training-date').dispatchEvent(new Event('change'));$('bjj-training-form').scrollIntoView({behavior:'smooth'});}
+      if(result.source_type==='bjj_training'&&result.journal_date)openTrainingForEdit(result.journal_date);
     });
     return button;
   }
@@ -75,7 +75,113 @@
     }catch(error){results.textContent=error.message;}
   });
   $('bjj-note-form').addEventListener('submit',async event=>{event.preventDefault();if(!current)return;const video=$('bjj-video'),status=$('bjj-note-status');status.textContent='Saving…';try{const data=await request('/api/bjj/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_id:current.item.id,timestamp:video.currentTime,excerpt:$('bjj-note-excerpt').textContent,text:$('bjj-note-text').value,tags:$('bjj-note-tags').value.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)})});$('bjj-note-text').value='';status.textContent=`Saved to ${data.path}.`;loadNotes();}catch(error){status.textContent=error.message;}});
-  async function loadTraining(){const form=$('bjj-training-form'),status=$('bjj-training-status');try{const data=await request(`/api/bjj/training?date=${encodeURIComponent($('bjj-training-date').value)}`);for(const input of form.querySelectorAll('[name]'))input.value=data[input.name]||'';form.dataset.revision=data.revision||'';status.textContent=data.path?`Loaded ${data.path}.`:'';}catch(error){status.textContent=error.message;}}
-  const today=new Date();$('bjj-training-date').value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;$('bjj-training-date').addEventListener('change',loadTraining);loadTraining();$('bjj-training-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,status=$('bjj-training-status'),data=Object.fromEntries(new FormData(form));data.date=$('bjj-training-date').value;data.revision=form.dataset.revision||'';status.textContent='Saving…';try{const result=await request('/api/bjj/training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});form.dataset.revision=result.revision||'';status.textContent=`Saved to ${result.path}.`;}catch(error){status.textContent=error.message;}});
-  window.addEventListener('hashchange',()=>{if(location.hash==='#bjj'&&!library){load();loadAIStatus();}});if(location.hash==='#bjj'){load();loadAIStatus();}
+  const trainingForm=$('bjj-training-form'),trainingDate=$('bjj-training-date');
+  const trainingValues=()=>JSON.stringify(Object.fromEntries(new FormData(trainingForm)));
+  const trainingDirty=()=>trainingForm.dataset.loadedValues!==undefined&&trainingValues()!==trainingForm.dataset.loadedValues;
+  let loadedTrainingDate='',trainingLoadToken=0;
+  async function loadTraining(){
+    const day=trainingDate.value,token=++trainingLoadToken,status=$('bjj-training-status');
+    try{
+      const data=await request(`/api/bjj/training?date=${encodeURIComponent(day)}`);
+      if(token!==trainingLoadToken)return;
+      for(const input of trainingForm.querySelectorAll('[name]'))input.value=data[input.name]||'';
+      trainingForm.dataset.revision=data.revision||'';
+      trainingForm.dataset.loadedValues=trainingValues();
+      loadedTrainingDate=day;
+      status.textContent=data.path?`Loaded ${data.path}.`:'';
+    }catch(error){if(token===trainingLoadToken){if(loadedTrainingDate)trainingDate.value=loadedTrainingDate;status.textContent=error.message;}}
+  }
+  async function openTrainingForEdit(day){
+    if(trainingDirty()&&!window.confirm('You have unsaved training notes. Leave this draft and open another session?'))return;
+    trainingDate.value=day;
+    await loadTraining();
+    trainingForm.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+    trainingDate.focus({preventScroll:true});
+  }
+  const today=new Date();trainingDate.value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  trainingDate.addEventListener('change',()=>{
+    if(trainingDirty()&&!window.confirm('You have unsaved training notes. Leave this draft and open another date?')){trainingDate.value=loadedTrainingDate;return;}
+    loadTraining();
+  });
+  loadTraining();
+
+  const historyList=$('bjj-history-list'),historyDetail=$('bjj-history-detail');
+  let historyEntries=[],historyTotal=0,historySelected='',historyRequestToken=0,historyDetailToken=0,historySearchTimer;
+  const displayDate=day=>new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
+  const detailDate=day=>new Intl.DateTimeFormat('en-US',{month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
+  const monthLabel=day=>new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date(`${day}T12:00:00`));
+  function renderHistoryList(){
+    historyList.replaceChildren();
+    if(!historyEntries.length){historyList.append(node('p',$('bjj-history-query').value||$('bjj-history-rating').value?'No sessions match these filters.':'No training sessions saved yet.','small'));return;}
+    let month='';
+    for(const entry of historyEntries){
+      const group=monthLabel(entry.date);
+      if(group!==month){historyList.append(node('h3',group,'bjj-history-month'));month=group;}
+      const button=node('button',null,'bjj-history-row');button.type='button';button.dataset.date=entry.date;button.setAttribute('aria-pressed',String(entry.date===historySelected));
+      const date=node('span',null,'bjj-history-date');date.append(node('strong',String(Number(entry.date.slice(-2)))),node('small',new Intl.DateTimeFormat('en-US',{weekday:'short'}).format(new Date(`${entry.date}T12:00:00`))));
+      const copy=node('span',null,'bjj-history-row-copy');copy.append(node('strong',displayDate(entry.date)),node('span',entry.preview));
+      if(entry.rating)copy.append(node('small',`Session rating ${entry.rating}/5`,'bjj-history-rating'));
+      button.append(date,copy);
+      button.addEventListener('click',()=>showHistoryDetail(entry.date,true));historyList.append(button);
+    }
+  }
+  async function showHistoryDetail(day,scroll=false){
+    const token=++historyDetailToken;historySelected=day;
+    for(const row of historyList.querySelectorAll('.bjj-history-row'))row.setAttribute('aria-pressed',String(row.dataset.date===day));
+    historyDetail.replaceChildren(node('p','Loading session…','small'));
+    try{
+      const entry=await request(`/api/bjj/training?date=${encodeURIComponent(day)}`);
+      if(token!==historyDetailToken)return;
+      historyDetail.replaceChildren();
+      const heading=node('div',null,'bjj-history-detail-heading');
+      const title=node('h3',detailDate(day));heading.append(title);
+      if(entry.rating)heading.append(node('span',`${entry.rating} / 5`,'bjj-history-score'));
+      historyDetail.append(heading);
+      const sections=[['general_notes','General notes'],['session_goals','Session goals'],['problems','Problems encountered'],['worked','What worked']];
+      let filled=0;
+      for(const [key,label] of sections){
+        if(!entry[key])continue;
+        const section=node('section',null,'bjj-history-section');section.append(node('h4',label),node('p',entry[key]));historyDetail.append(section);filled++;
+      }
+      if(!filled)historyDetail.append(node('p','This session has no written notes.','small'));
+      const edit=node('button','Edit this session','bjj-history-edit');edit.type='button';edit.addEventListener('click',()=>openTrainingForEdit(day));historyDetail.append(edit);
+      if(scroll&&matchMedia('(max-width: 750px)').matches)historyDetail.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+    }catch(error){if(token===historyDetailToken)historyDetail.replaceChildren(node('p',error.message,'error'));}
+  }
+  async function loadTrainingHistory(reset=true){
+    const token=++historyRequestToken,status=$('bjj-history-status');
+    if(reset)historyDetailToken++;
+    const params=new URLSearchParams({q:$('bjj-history-query').value.trim(),rating:$('bjj-history-rating').value,limit:'20',offset:String(reset?0:historyEntries.length)});
+    status.textContent='Loading sessions…';
+    try{
+      const data=await request(`/api/bjj/training-history?${params}`);
+      if(token!==historyRequestToken)return;
+      historyEntries=reset?data.entries:historyEntries.concat(data.entries);
+      historyTotal=data.total;
+      $('bjj-history-count').textContent=`${historyTotal} ${historyTotal===1?'session':'sessions'}`;
+      $('bjj-history-more').hidden=historyEntries.length>=historyTotal;
+      status.textContent='';
+      if(reset&&!historyEntries.some(entry=>entry.date===historySelected))historySelected=historyEntries[0]?.date||'';
+      renderHistoryList();
+      if(historySelected&&reset)showHistoryDetail(historySelected);
+      if(!historySelected)historyDetail.replaceChildren(node('p',historyTotal?'Select a session to read it here.':$('bjj-history-query').value||$('bjj-history-rating').value?'Try another search or rating to find a session.':'Saved training sessions will appear here.','small'));
+    }catch(error){if(token===historyRequestToken)status.textContent=error.message;}
+  }
+  $('bjj-history-jump').addEventListener('click',()=>$('bjj-past-sessions').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
+  $('bjj-history-query').addEventListener('input',()=>{clearTimeout(historySearchTimer);historySearchTimer=setTimeout(()=>loadTrainingHistory(),250);});
+  $('bjj-history-rating').addEventListener('change',()=>loadTrainingHistory());
+  $('bjj-history-more').addEventListener('click',()=>loadTrainingHistory(false));
+  trainingForm.addEventListener('submit',async event=>{
+    event.preventDefault();const status=$('bjj-training-status'),data=Object.fromEntries(new FormData(trainingForm));
+    data.date=trainingDate.value;data.revision=trainingForm.dataset.revision||'';status.textContent='Saving…';
+    try{
+      const result=await request('/api/bjj/training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      trainingForm.dataset.revision=result.revision||'';trainingForm.dataset.loadedValues=trainingValues();loadedTrainingDate=data.date;
+      status.textContent=`Saved to ${result.path}.`;
+      await loadTrainingHistory();
+      if(historyEntries.some(entry=>entry.date===data.date))showHistoryDetail(data.date);
+    }catch(error){status.textContent=error.message;}
+  });
+  window.addEventListener('hashchange',()=>{if(location.hash==='#bjj'&&!library){load();loadAIStatus();loadTrainingHistory();}});
+  if(location.hash==='#bjj'){load();loadAIStatus();loadTrainingHistory();}
 })();

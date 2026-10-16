@@ -288,6 +288,29 @@ class BJJTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "from 1 to 5"):
             self.library.save_training({"date": "2026-09-28", "rating": "6"})
 
+    def test_training_history_lists_filters_and_pages_saved_sessions(self):
+        folder = self.vault / "BJJ" / "Journal"
+        folder.mkdir(parents=True)
+        (folder / "2026-09-28.md").write_text(
+            "# Session\n\n## General Notes\n\nK guard entries and balance.\n\n## Session rating\n\n4\n",
+            encoding="utf-8",
+        )
+        (folder / "2026-09-30.md").write_text(
+            "# Session\n\n## Problems encountered\n\nLost the underhook.\n\n## Session rating\n\n2\n",
+            encoding="utf-8",
+        )
+        (folder / "not-a-date.md").write_text("# Ignore me", encoding="utf-8")
+        (self.vault / "2026-10-01.md").write_text("# Personal journal", encoding="utf-8")
+        first = self.library.training_history(limit=1)
+        self.assertEqual(first["total"], 2)
+        self.assertEqual(first["entries"], [{"date": "2026-09-30", "rating": "2", "preview": "Lost the underhook."}])
+        self.assertEqual(self.library.training_history(limit=1, offset=1)["entries"][0]["date"], "2026-09-28")
+        self.assertEqual(self.library.training_history(query="BALANCE")["entries"][0]["date"], "2026-09-28")
+        self.assertEqual(self.library.training_history(rating="2")["total"], 1)
+        self.assertEqual(self.library.training_history(query="unmatched")["entries"], [])
+        with self.assertRaisesRegex(ValueError, "rating"):
+            self.library.training_history(rating="6")
+
     def test_legacy_training_fields_are_preserved_when_loaded(self):
         folder = self.vault / "BJJ" / "Journal"
         folder.mkdir(parents=True)
@@ -364,6 +387,12 @@ class BJJTests(unittest.TestCase):
             status, body, _ = get("/api/bjj/search?q=underhook&source=bjj")
             self.assertEqual(status, 200)
             self.assertEqual(json.loads(body)["results"][0]["source_type"], "bjj_transcript")
+            (self.vault / "BJJ" / "Journal").mkdir(parents=True)
+            (self.vault / "BJJ" / "Journal" / "2026-09-28.md").write_text(
+                "# Session\n\n## What worked\n\nFrames.\n", encoding="utf-8")
+            status, body, _ = get("/api/bjj/training-history?q=frames")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)["entries"][0]["date"], "2026-09-28")
             self.assertEqual(get("/api/bjj/media/octopus-guard-2-v01", {"Range": "bytes=50-60"})[0], 416)
             self.assertEqual(get("/api/bjj/media/../../config.local.json")[0], 404)
             self.assertEqual(get("/api/bjj/library", {"Host": "evil.example"})[0], 403)
