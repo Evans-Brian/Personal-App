@@ -43,10 +43,10 @@
   function split(text){
     text=habits(jo(text).body).body;
     const ratings={};
-    text=text.replace(/^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?\s*(?=^### |$(?![\s\S]))/m,(_,good,productive,scale)=>{
+    text=text.replace(/^### Daily ratings\r?\n\s*(?:Good day|Day satisfaction): (10|[1-9]|unrated)(?:\r?\nDay satisfaction scale: (10))?\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?\s*(?=^### |$(?![\s\S]))/m,(_,good,goodScale,productive,productiveScale)=>{
       const legacy={1:'1',2:'3',3:'6',4:'8',5:'10'};
-      ratings.good=good==='unrated'?'':good;
-      ratings.productive=productive==='unrated'?'':(!scale && legacy[productive] || productive);
+      ratings.good=good==='unrated'?'':(!goodScale && legacy[good] || good);
+      ratings.productive=productive==='unrated'?'':(!productiveScale && legacy[productive] || productive);
       return '';
     });
     const marker=heading+'\n';const normalized=text.replace(/\r\n/g,'\n');

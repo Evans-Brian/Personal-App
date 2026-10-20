@@ -43,9 +43,9 @@ class DailyUseTests(unittest.TestCase):
     def test_history_reads_ten_point_productivity(self):
         journal = Journal(self.root / 'vault')
         record = journal.read('2026-09-17')
-        evening = '### Daily ratings\n\nGood day: 4\nProductive day: 10\nProductivity scale: 10\n\n'
+        evening = '### Daily ratings\n\nDay satisfaction: 8\nDay satisfaction scale: 10\nProductive day: 10\nProductivity scale: 10\n\n'
         journal.save(record['date'], 'evening', evening, record['revision'])
-        self.assertEqual(journal.history()[0]['good'], 4)
+        self.assertEqual(journal.history()[0]['good'], 8)
         self.assertEqual(journal.history()[0]['productive'], 10)
 
     def test_history_normalizes_unmarked_legacy_productivity(self):
@@ -54,6 +54,7 @@ class DailyUseTests(unittest.TestCase):
         evening = '### Daily ratings\n\nGood day: 3\nProductive day: 4\n\n'
         journal.save(record['date'], 'evening', evening, record['revision'])
         self.assertEqual(journal.history()[0]['productive'], 8)
+        self.assertEqual(journal.history()[0]['good'], 6)
 
     def test_secrets_encrypted_and_round_trip(self):
         vault = SecretStore(self.root/'private.bin')

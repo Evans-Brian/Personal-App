@@ -15,7 +15,7 @@ PROMPTS = {
     "morning": "### How am I feeling this morning?\n\n\n### What would make today feel like a good day?\n\n\n### What might get in the way, and what could help?\n\n",
     "evening": "### What made me happy or grateful today?\n\n\n### When did I feel most engaged or connected today?\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n### What moment would I like to remember?\n\n\n### What did I learn today—about myself, someone else, or the world?\n\n",
 }
-PRODUCTIVITY_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
+RATING_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
 
 
 class Conflict(Exception):
@@ -225,16 +225,18 @@ class Journal:
                     answer = re.sub(r'^<!-- evening-jo: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- evening-habits: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- carry-review: .*? -->\r?\n?', '', answer, flags=re.M).strip()
-                    answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Productive day): unrated|Productivity scale: 10)\r?$', '', answer, flags=re.M).strip()
+                    answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Day satisfaction|Productive day): unrated|(?:Day satisfaction|Productivity) scale: 10)\r?$', '', answer, flags=re.M).strip()
                     statuses[period] = 'written' if answer else ('blank' if start is not None else 'missing')
                 evening = record['sections']['evening']
-                ratings = re.search(r'^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?', evening, re.M)
+                ratings = re.search(r'^### Daily ratings\r?\n\s*(?:Good day|Day satisfaction): (10|[1-9]|unrated)(?:\r?\nDay satisfaction scale: (10))?\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?', evening, re.M)
                 if ratings:
-                    good, productive, scale = ratings.groups()
+                    good, good_scale, productive, productivity_scale = ratings.groups()
                     metrics = {'good': int(good) if good != 'unrated' else None,
                                'productive': int(productive) if productive != 'unrated' else None}
-                    if scale is None and metrics['productive'] is not None:
-                        metrics['productive'] = PRODUCTIVITY_1_TO_10.get(metrics['productive'], metrics['productive'])
+                    if good_scale is None and metrics['good'] is not None:
+                        metrics['good'] = RATING_1_TO_10.get(metrics['good'], metrics['good'])
+                    if productivity_scale is None and metrics['productive'] is not None:
+                        metrics['productive'] = RATING_1_TO_10.get(metrics['productive'], metrics['productive'])
                 else:
                     metrics = {'good':None,'productive':None}
                 entries.append({'date': path.stem, **statuses, **metrics})

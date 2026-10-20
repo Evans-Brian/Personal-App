@@ -106,7 +106,7 @@ function content() {
       if(text && row.querySelector('.do-later-check').checked)carryChoices[ownPrefix+text]='Skipped until '+row.querySelector('.do-later-date').value;
     }
   }
-  const prefix=period==='evening'?JournalPlans.serialize(reviewTasks.map((t,i)=>({...t,done:el(`plan-done-${i}`).checked})))+`### Daily ratings\n\nGood day: ${el('rating-good').value || 'unrated'}\nProductive day: ${el('rating-productive').value || 'unrated'}\nProductivity scale: 10\n\n`:'';
+  const prefix=period==='evening'?JournalPlans.serialize(reviewTasks.map((t,i)=>({...t,done:el(`plan-done-${i}`).checked})))+`### Daily ratings\n\nDay satisfaction: ${el('rating-good').value || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${el('rating-productive').value || 'unrated'}\nProductivity scale: 10\n\n`:'';
   return (period==='morning'?'<!-- carry-review: '+encodeURIComponent(JSON.stringify(carryChoices))+' -->\n':'')+prefix+parts.map((p,i)=>{
     const answer=period==='morning' && (i===1 || i===2)?[...document.querySelectorAll(`[id^="${i===2?'optional':'plan'}-"].plan-input`)].map(field=>field.value.trim()).filter(Boolean).map(s=>`- ${s}`).join('\n'):el(`answer-${i}`).value.trim();
     return `### ${p.title}\n\n${answer}\n\n`;
@@ -252,7 +252,7 @@ function showEditor(text, preferGuided=true) {
         const current=content();reviewTasks=JournalPlans.split(current).tasks;
         reviewTasks.push({text,original:text,done:false,followup:crypto.randomUUID(),parent:original});
         const parsed=JournalPlans.split(current);
-        const ratings=`### Daily ratings\n\nGood day: ${parsed.ratings.good || 'unrated'}\nProductive day: ${parsed.ratings.productive || 'unrated'}\nProductivity scale: 10\n\n`;
+        const ratings=`### Daily ratings\n\nDay satisfaction: ${parsed.ratings.good || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${parsed.ratings.productive || 'unrated'}\nProductivity scale: 10\n\n`;
         showEditor(JournalPlans.serialize(reviewTasks)+ratings+parsed.body+JournalPlans.serializeHabits(JournalPlans.habits(current).value)+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
         status('Follow-up added. Save your evening entry to keep it and include it in the next carry-forward review.');
       });tools.append(add);row.append(tools);
@@ -272,7 +272,7 @@ function showEditor(text, preferGuided=true) {
         const taskText=prefix+input.value.trim(),current=content(),parsed=JournalPlans.split(current);
         if(parsed.tasks.some(task=>task.text.toLowerCase()===taskText.toLowerCase())){status('That task is already in this checklist.',true);return;}
         parsed.tasks.push({text:taskText,original:taskText,done:false,eveningAdded:true});
-        const ratings=`### Daily ratings\n\nGood day: ${parsed.ratings.good || 'unrated'}\nProductive day: ${parsed.ratings.productive || 'unrated'}\nProductivity scale: 10\n\n`;
+        const ratings=`### Daily ratings\n\nDay satisfaction: ${parsed.ratings.good || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${parsed.ratings.productive || 'unrated'}\nProductivity scale: 10\n\n`;
         showEditor(JournalPlans.serialize(parsed.tasks)+ratings+parsed.body+JournalPlans.serializeHabits(JournalPlans.habits(current).value)+JournalPlans.serializeJO(JournalPlans.jo(current).value));changed();
         status('Task added. Check it off if done, then save your evening entry. Unfinished tasks will be offered in carry-forward.');
       };
@@ -284,14 +284,14 @@ function showEditor(text, preferGuided=true) {
   if(guided && period==='evening'){
     const ratings=JournalPlans.split(text).ratings;
     const title=document.createElement('h3');title.textContent='Rate your day';el('plan-review').append(title);
-    for(const [key,question] of [['good','Was this a good day? (happy / fulfilling)'],['productive','Was this a productive day? Grade on a curve for weekends']]){
+    for(const [key,question] of [['good','How satisfying was today overall?'],['productive','Was this a productive day? Grade on a curve for weekends']]){
       const label=document.createElement('label');label.className='rating-label';label.textContent=question;
       const select=document.createElement('select');select.id=`rating-${key}`;
       const blank=document.createElement('option');blank.value='';blank.textContent='Not rated';select.append(blank);
       const options=key==='good'
-        ? [['1','Not at all'],['2','A little'],['3','Somewhat'],['4','Quite'],['5','Very']]
-        : [['1','Not at all'],['2',''],['3','A little'],['4',''],['5',''],['6','Somewhat'],['7',''],['8','Quite'],['9',''],['10','Very']];
-      for(const [score,anchor] of options){const option=document.createElement('option');option.value=score;option.textContent=anchor?`${score} — ${anchor}`:score;select.append(option);}
+        ? [['1','Awful — overwhelmingly negative'],['2','Very difficult — little felt good'],['3','Difficult — more bad than good'],['4','Below average — noticeably unsatisfying'],['5','Mixed — good and bad felt balanced'],['6','Decent — somewhat satisfying'],['7','Good — clearly positive'],['8','Very good — happy and fulfilling'],['9','Excellent — deeply satisfying'],['10','Exceptional — about as good as a day gets']]
+        : [['1','No meaningful progress'],['2','Minimal progress'],['3','A little progress'],['4','Some progress'],['5','Moderate progress'],['6','Solid progress'],['7','Productive'],['8','Very productive'],['9','Highly productive'],['10','Exceptional progress']];
+      for(const [score,description] of options){const option=document.createElement('option');option.value=score;option.textContent=`${score} — ${description}`;select.append(option);}
       select.value=ratings[key] || '';select.addEventListener('change',changed);label.append(select);el('plan-review').append(label);
     }
   }
@@ -539,10 +539,10 @@ function renderTrends(entries){
   for(let offset=29;offset>=0;offset--){
     const day=new Date();day.setDate(day.getDate()-offset);const date=key(day),row=days.get(date);
     const line=document.createElement('div');line.className='trend-row';const label=document.createElement('span');label.textContent=date;line.append(label);
-    for(const [metric,title] of [['good','Good day'],['productive','Productive']]){
+    for(const [metric,title] of [['good','Day satisfaction'],['productive','Productive']]){
       const cell=document.createElement('div');cell.className=metric;const value=row?.[metric];
       const text=document.createElement('span');text.textContent=`${title}: ${value ?? '—'}`;cell.append(text);
-      if(value!=null){const max=metric==='productive'?10:5;const bar=document.createElement('progress');bar.max=max;bar.value=value;bar.setAttribute('aria-label',`${date} ${title}: ${value} out of ${max}`);cell.append(bar);}line.append(cell);
+      if(value!=null){const max=10;const bar=document.createElement('progress');bar.max=max;bar.value=value;bar.setAttribute('aria-label',`${date} ${title}: ${value} out of ${max}`);cell.append(bar);}line.append(cell);
     }
     el('trends').append(line);
   }
