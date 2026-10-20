@@ -15,6 +15,7 @@ PROMPTS = {
     "morning": "### How am I feeling this morning?\n\n\n### What would make today feel like a good day?\n\n\n### What might get in the way, and what could help?\n\n",
     "evening": "### What made me happy or grateful today?\n\n\n### When did I feel most engaged or connected today?\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n### What moment would I like to remember?\n\n\n### What did I learn today—about myself, someone else, or the world?\n\n",
 }
+PRODUCTIVITY_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
 
 
 class Conflict(Exception):
@@ -224,11 +225,18 @@ class Journal:
                     answer = re.sub(r'^<!-- evening-jo: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- evening-habits: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- carry-review: .*? -->\r?\n?', '', answer, flags=re.M).strip()
-                    answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Productive day): unrated)\r?$', '', answer, flags=re.M).strip()
+                    answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Productive day): unrated|Productivity scale: 10)\r?$', '', answer, flags=re.M).strip()
                     statuses[period] = 'written' if answer else ('blank' if start is not None else 'missing')
                 evening = record['sections']['evening']
-                ratings = re.search(r'^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: ([1-5]|unrated)', evening, re.M)
-                metrics = {k: int(v) if v != 'unrated' else None for k, v in zip(('good','productive'), ratings.groups())} if ratings else {'good':None,'productive':None}
+                ratings = re.search(r'^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?', evening, re.M)
+                if ratings:
+                    good, productive, scale = ratings.groups()
+                    metrics = {'good': int(good) if good != 'unrated' else None,
+                               'productive': int(productive) if productive != 'unrated' else None}
+                    if scale is None and metrics['productive'] is not None:
+                        metrics['productive'] = PRODUCTIVITY_1_TO_10.get(metrics['productive'], metrics['productive'])
+                else:
+                    metrics = {'good':None,'productive':None}
                 entries.append({'date': path.stem, **statuses, **metrics})
             except (ValueError, OSError):
                 entries.append({'date': path.stem, 'morning': 'needs review', 'evening': 'needs review'})

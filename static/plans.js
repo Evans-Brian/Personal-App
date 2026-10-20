@@ -43,7 +43,12 @@
   function split(text){
     text=habits(jo(text).body).body;
     const ratings={};
-    text=text.replace(/^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: ([1-5]|unrated)\s*(?=^### |$(?![\s\S]))/m,(_,good,productive)=>{ratings.good=good==='unrated'?'':good;ratings.productive=productive==='unrated'?'':productive;return '';});
+    text=text.replace(/^### Daily ratings\r?\n\s*Good day: ([1-5]|unrated)\r?\nProductive day: (10|[1-9]|unrated)(?:\r?\nProductivity scale: (10))?\s*(?=^### |$(?![\s\S]))/m,(_,good,productive,scale)=>{
+      const legacy={1:'1',2:'3',3:'6',4:'8',5:'10'};
+      ratings.good=good==='unrated'?'':good;
+      ratings.productive=productive==='unrated'?'':(!scale && legacy[productive] || productive);
+      return '';
+    });
     const marker=heading+'\n';const normalized=text.replace(/\r\n/g,'\n');
     if(!normalized.startsWith(marker))return {body:text,tasks:[],ratings};
     const end=normalized.indexOf('\n### ',marker.length);
