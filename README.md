@@ -138,17 +138,17 @@ This server is for personal use on localhost. It checks Host/Origin, rejects cro
 
 
 ## Morning plans and evening progress
-The good-day morning prompt has four optional single-line entries, saved as Markdown bullets. Existing answers with up to four nonempty lines open in these fields; longer/custom answers remain in the Markdown editor without truncation. Save the morning entry before reviewing it in the evening. The evening check-in saves standard Markdown task checkboxes and preserves earlier checklist items if morning plans later change.
+The Priority Tasks morning section starts with four single-line entries, saved as Markdown bullets. Existing answers with up to four nonempty lines open in these fields; longer/custom answers remain in the Markdown editor without truncation. Save the morning entry before reviewing it in the evening. The evening check-in saves standard Markdown task checkboxes and preserves earlier checklist items if morning plans later change.
 
 Evening includes optional 1–10 day-satisfaction and productivity ratings, stored in a Daily ratings Markdown subsection, plus checkboxes for phone/game time before morning and afternoon work. Historical 1–5 ratings are normalized with `1→1`, `2→3`, `3→6`, `4→8`, and `5→10`; explicit scale markers make migration idempotent and let old browser drafts normalize safely. Day satisfaction replaces the older Good day name and asks how satisfying the day felt overall. Every value on both scales has a description. The checkboxes are stored as local metadata in that day's Markdown. Your progress shows 30 days of ratings and a journaling streak. Unrated days remain missing, not zero. The streak counts consecutive days with saved writing, checked tasks, or a rating, starting today or yesterday if today is still unwritten. Browser drafts do not count. Checkmarks and ratings participate in draft recovery and file conflict checks.
 
 
-Morning also offers four if-time entries. Both lists become evening checkboxes. Carry forward reviews unfinished items from the latest earlier saved plan (including across gaps); without an evening checklist, completion is labeled unknown. Choose either list or Skip today. Nothing is added automatically, and each list remains limited to four. Choices are saved with the morning entry and recovered with drafts. This is a review of the most recent plan, not a permanent backlog of every skipped task.
+Morning also offers Secondary Tasks for lower-priority items to tackle after the priorities, if time and energy allow. Both lists become evening checkboxes. Carry forward reviews unfinished items from the latest earlier saved plan (including across gaps); without an evening checklist, completion is labeled unknown. Choose either list or Skip today. Nothing is added automatically. Choices are saved with the morning entry and recovered with drafts. This is a review of the most recent plan, not a permanent backlog of every skipped task.
 
 
 ### Optional plans and completion history
 
-The if-time list starts with one field; **+ Add item** adds more without a four-item limit. Good-day plans retain their four-item limit. Saved nonempty fields reappear on reload. Both lists remain in the evening checklist.
+Secondary Tasks starts with one field; **+ Add item** adds more without a four-item limit. Priority Tasks retains its four-item starting layout. Saved nonempty fields reappear on reload. Both lists remain in the evening checklist.
 
 Carry-forward review includes **Already done**. Tick it and save the morning entry to record completion on that journal date. Once added to today's plans, complete the item in the evening checklist. Carrying an unfinished item does not change the previous night's unchecked box.
 

@@ -12,7 +12,7 @@ from task_history import archive, evening_tasks
 from day_context import day_context, add_day_context
 
 PROMPTS = {
-    "morning": "### How am I feeling this morning?\n\n\n### What would make today feel like a good day?\n\n\n### What might get in the way, and what could help?\n\n",
+    "morning": "### How am I feeling this morning?\n\n\n### Priority Tasks\n\n\n### Secondary Tasks\n\n\n### What might get in the way, and what could help?\n\n",
     "evening": "### What made me happy or grateful today?\n\n\n### When did I feel most engaged or connected today?\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n### What moment would I like to remember?\n\n\n### What did I learn today—about myself, someone else, or the world?\n\n",
 }
 RATING_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
@@ -88,7 +88,9 @@ class Journal:
                 except (ValueError, TypeError):
                     pass
             plans = []
-            for title, prefix in [('What would make today feel like a good day?', ''), ('What would be great to do today, if I have time?', '[If time] ')]:
+            for title, prefix in [('Priority Tasks', ''), ('Secondary Tasks', '[If time] '),
+                                  ('What would make today feel like a good day?', ''),
+                                  ('What would be great to do today, if I have time?', '[If time] ')]:
                 match = re.search(r'^### '+re.escape(title)+r'\s*\r?\n([\s\S]*?)(?=^### |\Z)', morning, re.M)
                 if match:
                     lines = [s.strip() for s in match[1].splitlines() if s.strip()]

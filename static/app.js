@@ -80,11 +80,11 @@ function showConflict(latest){
   status('Your draft and saved note differ. Review the versions below to continue.',true);
 }
 const prompts = {
-  morning: ['How am I feeling this morning?', 'What would make today feel like a good day?', 'What would be great to do today, if I have time?', 'What might get in the way, and what could help?'],
+  morning: ['How am I feeling this morning?', 'Priority Tasks', 'Secondary Tasks', 'What might get in the way, and what could help?'],
   evening: ['What made me happy or grateful today?', 'When did I feel most engaged or connected today?', 'What am I proud of today?', 'What would I do differently if I replayed today?', 'What moment would I like to remember?', 'What did I learn today—about myself, someone else, or the world?']
 };
 const hints = {
-  morning: ['Notice your mood, energy, sleep, or whatever is on your mind.', 'List a few things you would like to move forward, experience, or follow up on. They do not all have to be accomplishments.', 'Optional extras, if there is room in your day.', 'Think about practical obstacles, feelings, distractions, or support you might need.'],
+  morning: ['Notice your mood, energy, sleep, or whatever is on your mind.', 'The tasks that matter most today. Keep the list focused and realistic.', 'Lower-priority tasks to tackle after your priorities, if time and energy allow.', 'Think about practical obstacles, feelings, distractions, or support you might need.'],
   evening: ['A person, a small pleasure, or something that went well.', 'An activity that held your attention, or a moment of connection with someone.', 'An effort, a choice, or how you handled something. Small things count.', 'One thing you might approach differently, knowing what you know now.', 'Capture a detail, a conversation, or a scene you would like to revisit.', 'A discovery, a new perspective, or something you noticed about yourself.']
 };
 function parsePrompts(text) {
@@ -116,7 +116,7 @@ function content() {
   })+JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value}):'');
 }
 function showEditor(text, preferGuided=true) {
-  // Refresh only an entirely blank old template; never relabel existing answers.
+  // Refresh only an entirely blank old template; preserve answers when upgrading current headings.
   const oldMorning = ['How am I feeling this morning?', 'What matters most today?', 'What is one small thing I can do for myself?'];
   const oldEvening = ['What stood out today?', 'What felt difficult, and what helped?', 'What do I want to carry into tomorrow?'];
   const oldPrompts = period==='morning' ? oldMorning : oldEvening;
@@ -161,7 +161,7 @@ function showEditor(text, preferGuided=true) {
       const toolbar=document.createElement('div');toolbar.className='task-order';row.append(toolbar);
       const remove=document.createElement('button');remove.type='button';remove.className='task-delete';remove.textContent='×';remove.setAttribute('aria-label','Delete task');
       remove.addEventListener('click',()=>{if(busy || !confirm('Delete this task? It will no longer carry forward. Save your evening entry to keep this change.'))return;task.deleted=true;refreshOrder();changed();});row.append(remove);
-      const groupTitle=document.createElement('h4');groupTitle.className='plan-category-title';groupTitle.textContent=task.text.startsWith('[If time] ')?'If I have time':'Good-day plans';row.insertBefore(groupTitle,toolbar);
+      const groupTitle=document.createElement('h4');groupTitle.className='plan-category-title';groupTitle.textContent=task.text.startsWith('[If time] ')?'Secondary Tasks':'Priority Tasks';row.insertBefore(groupTitle,toolbar);
       const handle=document.createElement('button');handle.type='button';handle.textContent='⠿';handle.draggable=true;handle.className='task-drag';handle.setAttribute('aria-label','Drag to reorder task');toolbar.append(handle);
       for(const [symbol,delta,name] of [['↑',-1,'up'],['↓',1,'down']]){
         const button=document.createElement('button');button.type='button';button.textContent=symbol;button.setAttribute('aria-label','Move task '+name);
@@ -263,7 +263,7 @@ function showEditor(text, preferGuided=true) {
   if(guided && period==='evening'){
     const addSection=document.createElement('div');addSection.className='evening-add';
     const title=document.createElement('h3');title.textContent='Add an evening task';addSection.append(title);
-    for(const [category,prefix] of [['Good-day plans',''],['If I have time','[If time] ']]){
+    for(const [category,prefix] of [['Priority Tasks',''],['Secondary Tasks','[If time] ']]){
       const row=document.createElement('div');row.className='optional-plan-row';
       const input=document.createElement('input');input.type='text';input.maxLength=1000;input.className='plan-input';input.placeholder=category;input.setAttribute('aria-label','New evening task: '+category);
       const button=document.createElement('button');button.type='button';button.textContent='+ Add to '+category.toLowerCase();
@@ -314,10 +314,10 @@ function showEditor(text, preferGuided=true) {
     if(period==='morning' && (i===1 || i===2)){
       const fieldPrefix=i===2?'optional':'plan';
       label.htmlFor=fieldPrefix+'-0';hint.textContent='Things you would like to move forward, experience, or follow up on. Add more items as needed.';
-      if(i===2)hint.textContent='Optional extras, if there is room in your day. Add as many as you need.';
+      if(i===2)hint.textContent='Lower-priority tasks to tackle after your priorities, if time and energy allow. Add as many as you need.';
       group.append(label,hint);const plans=JournalPlans.items(part.answer);
       for(let n=0;n<(i===2?Math.max(1,plans.length):Math.max(4,plans.length));n++){
-        const field=document.createElement('input');field.type='text';field.id=`${fieldPrefix}-${n}`;field.value=plans[n] || '';field.placeholder=`Entry ${n+1}`;field.setAttribute('aria-label',`${i===2?'If time':'Good day'} entry ${n+1}`);field.setAttribute('aria-describedby',hint.id);field.className='plan-input';field.hidden=i===2 && n>=Math.max(1,plans.length);field.addEventListener('input',changed);group.append(i===2?optionalPlanRow(field):morningTaskRow(field));
+        const field=document.createElement('input');field.type='text';field.id=`${fieldPrefix}-${n}`;field.value=plans[n] || '';field.placeholder=`Entry ${n+1}`;field.setAttribute('aria-label',`${i===2?'Secondary':'Priority'} task ${n+1}`);field.setAttribute('aria-describedby',hint.id);field.className='plan-input';field.hidden=i===2 && n>=Math.max(1,plans.length);field.addEventListener('input',changed);group.append(i===2?optionalPlanRow(field):morningTaskRow(field));
       }
       {
         const add=document.createElement('button');add.id='add-'+fieldPrefix;add.type='button';add.textContent='+ Add item';
@@ -377,7 +377,7 @@ function optionalPlanRow(field){
   const row=morningTaskRow(field,true);row.classList.add('optional-plan-row');
   const label=document.createElement('label');label.className='do-later-label';
   const check=document.createElement('input');check.type='checkbox';check.className='do-later-check';label.append(check,document.createTextNode('Do Later'));
-  const calendar=document.createElement('input');calendar.type='date';calendar.className='do-later-date';calendar.setAttribute('aria-label','Return date for '+(field.value || 'optional item'));
+  const calendar=document.createElement('input');calendar.type='date';calendar.className='do-later-date';calendar.setAttribute('aria-label','Return date for '+(field.value || 'secondary task'));
   const tomorrow=new Date(entry.date+'T12:00:00Z');tomorrow.setUTCDate(tomorrow.getUTCDate()+1);calendar.min=tomorrow.toISOString().slice(0,10);
   const decision=carryChoices[entry.date+':[If time] '+field.value.trim()];
   check.checked=typeof decision==='string' && decision.startsWith('Skipped until ');
@@ -393,7 +393,7 @@ function revealPlan(prefix,focus=false){
   const n=Math.max(-1,...[...document.querySelectorAll(`[id^="${prefix}-"].plan-input`)].map(field=>Number(field.id.split("-").at(-1))))+1;
   const field=document.createElement('input');field.type='text';field.id=`${prefix}-${n}`;
   field.placeholder=`Entry ${n+1}`;field.className='plan-input';
-  field.setAttribute('aria-label',`${prefix==='optional'?'If time':'Good day'} entry ${n+1}`);field.setAttribute('aria-describedby',prefix==='optional'?'answer-hint-2':'answer-hint-1');
+  field.setAttribute('aria-label',`${prefix==='optional'?'Secondary':'Priority'} task ${n+1}`);field.setAttribute('aria-describedby',prefix==='optional'?'answer-hint-2':'answer-hint-1');
   field.addEventListener('input',changed);el('add-'+prefix).before(prefix==='optional'?optionalPlanRow(field):morningTaskRow(field));
   if(focus)field.focus();
   return field;
@@ -417,8 +417,8 @@ function renderCarryover(){
     done.disabled=busy || String(carryChoices[key] || '').startsWith('Added');
     const doneText=document.createElement('span');doneText.textContent='Already done';doneLabel.append(done,doneText);row.append(doneLabel);
     done.addEventListener('change',()=>{if(busy)return;if(done.checked)carryChoices[key]='Completed';else delete carryChoices[key];changed();renderCarryover();});
-    if(carryChoices[key]){const result=document.createElement('span');result.textContent=carryChoices[key];row.append(result);}
-    else for(const [action,prefix] of [['Add to good-day plans','plan'],['Add to if-time','optional'],['Skip today',null],['Skip for a week','week'],['Skip for n days','custom']]){
+    if(carryChoices[key]){const result=document.createElement('span');result.textContent=String(carryChoices[key]).replace('Added to good-day plans','Added to Priority Tasks').replace('Added to if-time','Added to Secondary Tasks');row.append(result);}
+    else for(const [action,prefix] of [['Add to Priority Tasks','plan'],['Add to Secondary Tasks','optional'],['Skip today',null],['Skip for a week','week'],['Skip for n days','custom']]){
       let daysInput;
       if(prefix==='custom'){
         const label=document.createElement('label');label.textContent='Days to skip';
@@ -439,7 +439,7 @@ function renderCarryover(){
           const slot=[...document.querySelectorAll(`[id^="${prefix}-"].plan-input`)].find(field=>!field.value.trim()) || revealPlan(prefix);
           slot.value=text;slot.hidden=false;
         }
-        carryChoices[key]=prefix?`Added to ${prefix==='plan'?'good-day plans':'if-time'}`:'Skipped today';
+        carryChoices[key]=prefix?`Added to ${prefix==='plan'?'Priority Tasks':'Secondary Tasks'}`:'Skipped today';
         changed();renderCarryover();
       });row.append(button);
     }

@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 const p=require('../static/plans.js');
-const morning='### How am I feeling this morning?\n\nFine\n\n### What would make today feel like a good day?\n\nFirst\nSecond\nThird\nFourth\n\n### What might get in the way, and what could help?\n\n';
+const morning='### How am I feeling this morning?\n\nFine\n\n### Priority Tasks\n\nFirst\nSecond\nThird\nFourth\n\n### Secondary Tasks\n\n\n### What might get in the way, and what could help?\n\n';
 assert.deepEqual(p.morning(morning),['First','Second','Third','Fourth']);
 assert.deepEqual(p.items('- First\n- Second'),['First','Second']);
 assert.deepEqual(p.items('1\n2\n3\n4\n5'),['1','2','3','4','5']);
@@ -17,10 +17,16 @@ assert.equal(p.reconcile(['Changed'],tasks).length,3);
 assert.equal(p.split('### Custom\n\nKeep me').body,'### Custom\n\nKeep me');
 console.log('Plan parsing, checklist persistence, ratings, and migration checks passed.');
 const upgraded=p.upgrade(morning);
-assert.ok(upgraded.includes(p.optionalTitle));
+assert.ok(upgraded.includes('### '+p.priorityTitle));
+assert.ok(upgraded.includes('### '+p.secondaryTitle));
 assert.deepEqual(p.morning(upgraded),p.morning(morning));
-const both=upgraded.replace('### '+p.optionalTitle,'### '+p.optionalTitle+'\n\n- Bonus');
+const both=upgraded.replace('### '+p.secondaryTitle,'### '+p.secondaryTitle+'\n\n- Bonus');
 assert.equal(p.morning(both).at(-1),'[If time] Bonus');
+const legacy='### What would make today feel like a good day?\n\nOld priority\n\n### What would be great to do today, if I have time?\n\nOld secondary\n\n### What might get in the way, and what could help?\n\n';
+assert.deepEqual(p.morning(legacy),['Old priority','[If time] Old secondary']);
+assert.ok(p.upgrade(legacy).includes('### Priority Tasks'));
+assert.ok(p.upgrade(legacy).includes('### Secondary Tasks'));
+assert.ok(!p.upgrade(legacy).includes('What would make today feel like a good day?'));
 const choices={'yesterday:First':'Skipped today'};
 assert.deepEqual(p.review('<!-- carry-review: '+encodeURIComponent(JSON.stringify(choices))+' -->\n'+both).choices,choices);
 

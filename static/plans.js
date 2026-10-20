@@ -6,13 +6,16 @@
     if(lines.length>limit)return null;
     return lines.map(s=>s.replace(/^(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/,''));
   }
-  const optionalTitle='What would be great to do today, if I have time?';
+  const priorityTitle='Priority Tasks';
+  const secondaryTitle='Secondary Tasks';
+  const legacyPriorityTitle='What would make today feel like a good day?';
+  const legacySecondaryTitle='What would be great to do today, if I have time?';
   function optional(text){
-    const match=text.match(/^### What would be great to do today, if I have time\?\s*\r?\n([\s\S]*?)(?=^### |$(?![\s\S]))/m);
+    const match=text.match(/^### (?:Secondary Tasks|What would be great to do today, if I have time\?)\s*\r?\n([\s\S]*?)(?=^### |$(?![\s\S]))/m);
     return match?items(match[1],Infinity):[];
   }
   function morning(text){
-    const match=text.match(/^### What would make today feel like a good day\?\s*\r?\n([\s\S]*?)(?=^### |$(?![\s\S]))/m);
+    const match=text.match(/^### (?:Priority Tasks|What would make today feel like a good day\?)\s*\r?\n([\s\S]*?)(?=^### |$(?![\s\S]))/m);
     return [...(match?items(match[1]) || []:[]),...(optional(text) || []).map(s=>'[If time] '+s)];
   }
   function review(text){
@@ -21,9 +24,11 @@
     try{return {body:text.slice(match[0].length),choices:JSON.parse(decodeURIComponent(match[1]))};}catch{return {body:text,choices:{}};}
   }
   function upgrade(text){
-    const value=review(text).body;
-    if(!value.includes('### '+optionalTitle) && value.includes('### What would make today feel like a good day?') && value.includes('### What might get in the way, and what could help?'))
-      return value.replace('### What might get in the way, and what could help?', '### '+optionalTitle+'\n\n\n### What might get in the way, and what could help?');
+    let value=review(text).body
+      .replace('### '+legacyPriorityTitle, '### '+priorityTitle)
+      .replace('### '+legacySecondaryTitle, '### '+secondaryTitle);
+    if(!value.includes('### '+secondaryTitle) && value.includes('### '+priorityTitle) && value.includes('### What might get in the way, and what could help?'))
+      return value.replace('### What might get in the way, and what could help?', '### '+secondaryTitle+'\n\n\n### What might get in the way, and what could help?');
     return value;
   }
   function jo(text){
@@ -68,6 +73,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={jo,serializeJO,habits,serializeHabits,items,morning,split,reconcile,serialize,optional,optionalTitle,review,upgrade};
+  const api={jo,serializeJO,habits,serializeHabits,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

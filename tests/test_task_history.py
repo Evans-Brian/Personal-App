@@ -16,12 +16,12 @@ class TaskHistoryTests(unittest.TestCase):
         return self.j.save(day, period, body, self.j.read(day)['revision'])
 
     def morning(self, task, choices=None, optional=False):
-        return '<!-- carry-review: '+quote(json.dumps(choices or {}))+' -->\n### '+('What would be great to do today, if I have time?' if optional else 'What would make today feel like a good day?')+'\n\n- '+task+'\n'
+        return '<!-- carry-review: '+quote(json.dumps(choices or {}))+' -->\n### '+('Secondary Tasks' if optional else 'Priority Tasks')+'\n\n- '+task+'\n'
 
     def test_lineage_across_categories_and_days_and_recurring_task(self):
         self.save('2026-09-15','morning',self.morning('Read'))
-        self.save('2026-09-16','morning',self.morning('Read',{'2026-09-15:Read':'Added to if-time'},True))
-        self.save('2026-09-17','morning',self.morning('Read',{'2026-09-16:[If time] Read':'Added to good-day plans'}))
+        self.save('2026-09-16','morning',self.morning('Read',{'2026-09-15:Read':'Added to Secondary Tasks'},True))
+        self.save('2026-09-17','morning',self.morning('Read',{'2026-09-16:[If time] Read':'Added to Priority Tasks'}))
         self.save('2026-09-17','evening','### Morning plans — evening check-in\n\n- [x] Read\n')
         rows=self.j.task_history()
         self.assertEqual(len(rows),1)

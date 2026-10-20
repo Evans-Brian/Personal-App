@@ -6,7 +6,8 @@ import tempfile
 from hashlib import sha256
 from urllib.parse import unquote
 
-TITLES = [('What would make today feel like a good day?', ''),
+TITLES = [('Priority Tasks', ''), ('Secondary Tasks', '[If time] '),
+          ('What would make today feel like a good day?', ''),
           ('What would be great to do today, if I have time?', '[If time] ')]
 MARKER = '<!-- journal-task-history: '
 
@@ -61,8 +62,8 @@ def completions(journal):
             if not origin or source[:10] >= day:
                 continue
             text = source[11:].removeprefix('[If time] ')
-            if action in ('Added to good-day plans', 'Added to if-time'):
-                target = ('[If time] ' if action == 'Added to if-time' else '') + text
+            if action in ('Added to good-day plans', 'Added to if-time', 'Added to Priority Tasks', 'Added to Secondary Tasks'):
+                target = ('[If time] ' if action in ('Added to if-time', 'Added to Secondary Tasks') else '') + text
                 carried[target] = origin
             elif action == 'Completed':
                 add_completion(completed, origin, day, 'morning')

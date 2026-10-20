@@ -15,7 +15,7 @@ class DailyUseTests(unittest.TestCase):
     def test_carryover_both_lists_excludes_done_and_current_date(self):
         journal=Journal(self.root/'vault')
         entry=journal.read('2026-09-16')
-        morning='### What would make today feel like a good day?\n\n- Walk\n- Read\n\n### What would be great to do today, if I have time?\n\n- Cook\n'
+        morning='### Priority Tasks\n\n- Walk\n- Read\n\n### Secondary Tasks\n\n- Cook\n'
         entry=journal.save(entry['date'],'morning',morning,entry['revision'])
         self.assertEqual(journal.carryover('2026-09-16')['items'],[])
         self.assertFalse(journal.carryover('2026-09-17')['reviewed'])
