@@ -52,6 +52,16 @@ const sleepValue={woke_up:true,awake_20_minutes:true,awake_1_hour:false,awake_2_
 assertJO.deepEqual(joPlans.sleep('Body'+joPlans.serializeSleep(sleepValue)).value,sleepValue);
 assertJO.equal(joPlans.sleep('Old note').value.woke_up,false);
 assertJO.equal(joPlans.sleep('Body'+joPlans.serializeSleep(sleepValue)).body,'Body');
+assertJO.equal(joPlans.sleep('Body'+joPlans.serializeSleep(sleepValue)).metadata,joPlans.serializeSleep(sleepValue));
+assertJO.equal(joPlans.sleep('Old note').metadata,'');
+const morningContent=require('node:fs').readFileSync('static/app.js','utf8').split('function content() {')[1].split('function showEditor(')[0];
+function savedMorning(raw){
+  const context=require('node:vm').createContext({guided:true,period:'morning',entry:{date:'2026-10-22'},carryChoices:{},reviewTasks:[],parts:[{title:'How am I feeling this morning?'}],JournalPlans:p,document:{querySelectorAll:()=>[]},el:id=>({value:id==='entry'?raw:'A normal morning answer.'})});
+  require('node:vm').runInContext('function content() {'+morningContent+';result=content();',context);
+  return context.result;
+}
+assertJO.equal(joPlans.sleep(savedMorning('Old note'+joPlans.serializeSleep(sleepValue))).metadata,joPlans.serializeSleep(sleepValue));
+assertJO.equal(joPlans.sleep(savedMorning('New note')).metadata,'');
 const eveningNew={text:'Evening errand',original:'Evening errand',done:false,eveningAdded:true};
 assert.equal(p.split(p.serialize([eveningNew])).tasks[0].eveningAdded,true);
 assert.equal(p.reconcile([],p.split(p.serialize([eveningNew])).tasks)[0].earlier,false);

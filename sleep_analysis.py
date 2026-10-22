@@ -180,12 +180,19 @@ def insights(nights, summary, comparison):
     return result
 
 
-def analyze(store, journal=None, start=None, end=None):
+def analyze(store, journal=None, start=None, end=None, analysis_start=None):
     end = end or date.today().isoformat()
     start = start or (date.fromisoformat(end) - timedelta(days=89)).isoformat()
     first, last = date.fromisoformat(start), date.fromisoformat(end)
     if first > last or (last - first).days > 6000:
         raise ValueError('Choose a sleep range of at most 6,000 days, with start before end.')
+    if analysis_start:
+        cutoff = date.fromisoformat(analysis_start)
+        if last < cutoff:
+            raise ValueError(f'Sleep analysis starts on {cutoff.isoformat()}. Earlier data is ignored.')
+        # Ignore data before the locally chosen baseline in every dashboard calculation.
+        first = max(first, cutoff)
+        start = first.isoformat()
     records = store.read_range(start, end)
     by_kind = {}
     sessions = []
@@ -264,7 +271,8 @@ def analyze(store, journal=None, start=None, end=None):
                         overlaps.append((min(right, until) - max(left, cursor)).total_seconds() / 60)
                     cursor = until
         bins.append({'hour': hour, 'awake_minutes': round(sum(overlaps), 2)})
-    return {'start': start, 'end': end, 'inventory': store.inventory(), 'nights': nights, 'monthly':monthly,
+    return {'start': start, 'end': end, 'analysis_start': analysis_start,
+            'inventory': store.inventory(start=analysis_start), 'nights': nights, 'monthly':monthly,
             'sessions': sorted(sessions, key=lambda item: item['bedtime']), 'summary': summary,
             'comparison': comparison, 'wake_hours': bins, 'insights': insights(nights, summary, comparison),
             'coverage': {'nights': len(nights), 'stage_nights': sum(night['waso_minutes'] is not None for night in nights),

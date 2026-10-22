@@ -40,7 +40,12 @@ def configured_bjj_library():
     return Path(value) if value else ROOT / "data" / "bjj-library"
 
 
-def make_server(vault, database, port=8765, remote=None, bjj_root=None):
+def configured_sleep_start():
+    config = ROOT / "config.local.json"
+    return json.loads(config.read_text(encoding="utf-8")).get("sleep_analysis_start") if config.exists() else None
+
+
+def make_server(vault, database, port=8765, remote=None, bjj_root=None, sleep_start=None):
     remote = remote or {}
     remote_origin = remote.get('origin', '')
     remote_login = remote.get('login', '')
@@ -188,7 +193,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, {'records': oura.read_range(day, day)})
                 if url.path == '/api/oura/sleep-analysis':
                     query = parse_qs(url.query)
-                    return self.respond(200, analyze_sleep(oura, journal, query.get('start', [None])[0], query.get('end', [None])[0]))
+                    return self.respond(200, analyze_sleep(oura, journal, query.get('start', [None])[0], query.get('end', [None])[0], analysis_start=sleep_start))
                 if url.path == '/api/oura/callback':
                     query = parse_qs(url.query)
                     cookies = SimpleCookie(self.headers.get('Cookie', ''))
@@ -299,7 +304,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     args.vault = args.vault if args.vault is not None else configured_vault()
-    server = make_server(args.vault, args.database, args.port, configured_remote(), args.bjj_library or configured_bjj_library())
+    server = make_server(args.vault, args.database, args.port, configured_remote(), args.bjj_library or configured_bjj_library(), sleep_start=configured_sleep_start())
     server.oura_sync.start_worker()
     print(f"Journal ready: http://127.0.0.1:{server.server_port} | Vault: {args.vault.resolve()}", flush=True)
     try:

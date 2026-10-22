@@ -107,12 +107,8 @@ function content() {
     }
   }
   const prefix=period==='evening'?JournalPlans.serialize(reviewTasks.map((t,i)=>({...t,done:el(`plan-done-${i}`).checked})))+`### Daily ratings\n\nDay satisfaction: ${el('rating-good').value || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${el('rating-productive').value || 'unrated'}\nProductivity scale: 10\n\n`:'';
-  const metadata=period==='morning'?JournalPlans.serializeSleep({
-    woke_up:el('woke-up-last-night').checked,
-    awake_20_minutes:el('awake-20-minutes').checked,
-    awake_1_hour:el('awake-1-hour').checked,
-    awake_2_hours:el('awake-2-hours').checked
-  }):JournalPlans.serializeHabits({
+  // Retain historical morning metadata without collecting a new daily sleep report.
+  const metadata=period==='morning'?JournalPlans.sleep(el('entry').value).metadata:JournalPlans.serializeHabits({
     phone_game_before_morning_work:el('phone-game-before-morning-work').checked,
     phone_game_before_afternoon_work:el('phone-game-before-afternoon-work').checked,
     caffeine_after_4pm:el('caffeine-after-4pm').checked
@@ -314,31 +310,6 @@ function showEditor(text, preferGuided=true) {
     const reflection=document.createElement('section');reflection.className='prompt';
     const title=document.createElement('h3');title.textContent='From yesterday: what I would do differently';
     const answer=document.createElement('p');answer.textContent=yesterdayReflection;answer.style.whiteSpace='pre-wrap';reflection.append(title,answer);el('guided').append(reflection);
-  }
-  if(guided && period==='morning'){
-    const value=JournalPlans.sleep(text).value;
-    const box=document.createElement('section');box.className='prompt';
-    const title=document.createElement('h3');title.textContent='Sleep interruption';box.append(title);
-    const hint=document.createElement('p');hint.className='small';hint.textContent='Check what happened last night. Longer durations also count as the shorter thresholds.';box.append(hint);
-    const options=[
-      ['woke-up-last-night','woke_up','Woke up during the night'],
-      ['awake-20-minutes','awake_20_minutes','Awake for 20+ minutes'],
-      ['awake-1-hour','awake_1_hour','Awake for 1+ hour'],
-      ['awake-2-hours','awake_2_hours','Awake for 2+ hours']
-    ];
-    const checkboxes=[];
-    for(const [id,key,labelText] of options){
-      const label=document.createElement('label');label.className='plan-check';
-      const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id=id;checkbox.checked=value[key]===true;
-      checkbox.addEventListener('change',()=>{
-        const index=checkboxes.indexOf(checkbox);
-        if(index===0 && !checkbox.checked)checkboxes.slice(1).forEach(item=>item.checked=false);
-        else if(index>0){if(checkbox.checked)checkboxes.slice(0,index).forEach(item=>item.checked=true);else checkboxes.slice(index+1).forEach(item=>item.checked=false);}
-        changed();
-      });
-      checkboxes.push(checkbox);label.append(checkbox,document.createTextNode(labelText));box.append(label);
-    }
-    el('guided').append(box);
   }
   let extras=null;
   if(guided) parts.forEach((part,i)=>{

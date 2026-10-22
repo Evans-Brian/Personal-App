@@ -2,7 +2,7 @@
 (() => {
   const $=id=>document.getElementById(id);
   const colors={asleep:'#355977',awake:'#b67c30',onset:'#7e8fbb',wake:'#345b47',hrv:'#7e8fbb',deep:'#355977',light:'#b5cbd2',rem:'#7e8fbb'};
-  let data=null, selected=null, visibleNights=60, loading=0, polling=null;
+  let data=null, selected=null, visibleNights=60, loading=0, polling=null, analysisStart=null;
   const node=(tag,text,cls)=>{const item=document.createElement(tag);if(text!=null)item.textContent=text;if(cls)item.className=cls;return item;};
   const valid=value=>typeof value==='number' && Number.isFinite(value);
   const duration=value=>valid(value)?`${Math.floor(Math.round(value)/60)}h ${Math.round(value)%60}m`:'—';
@@ -14,11 +14,59 @@
   const svgNode=(tag,attrs={},text)=>{const item=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attrs))item.setAttribute(key,String(value));if(text!=null)item.textContent=text;return item;};
   async function api(url,body){const response=await fetch(url,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const value=await response.json();if(!response.ok)throw Error(value.error||'Sleep data could not load.');return value;}
   function legend(parent,series){const box=node('div',null,'sleep-legend');for(const line of series){const label=node('span',line.name);label.style.setProperty('--color',line.color);box.append(label);}parent.append(box);}
-  function chart(target,rows,series,{format=String,zero=true,label='Sleep trend',x='day'}={}){
+  function enlargePlot(label,draw,index){
+    let dialog=$('sleep-chart-dialog');
+    if(!dialog){
+      dialog=node('dialog',null,'sleep-chart-dialog');dialog.id='sleep-chart-dialog';dialog.setAttribute('aria-labelledby','sleep-chart-dialog-title');
+      const heading=node('div',null,'sleep-dialog-heading'),title=node('h2');title.id='sleep-chart-dialog-title';
+      const close=node('button','Close');close.type='button';close.setAttribute('aria-label','Close enlarged chart');close.addEventListener('click',()=>dialog.close());heading.append(title,close);
+      const content=node('div');content.id='sleep-chart-dialog-content';dialog.append(heading,content);document.body.append(dialog);
+      dialog.addEventListener('click',event=>{if(event.target===dialog){const box=dialog.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)dialog.close();}});
+    }
+    $('sleep-chart-dialog-title').textContent=label;
+    draw($('sleep-chart-dialog-content'),index);
+    dialog.showModal();
+    dialog.querySelector('svg[tabindex]')?.focus();
+  }
+  function plotTools(target,label,open,expanded){
+    if(expanded)return;
+    const tools=node('div',null,'sleep-chart-tools'),button=node('button','Enlarge');button.type='button';button.setAttribute('aria-label','Enlarge '+label);button.addEventListener('click',()=>open());tools.append(button);target.append(tools);
+  }
+  function interactivePlot(target,svg,rows,series,{px,py,width,top,bottom,format=String,label,expanded=false,initialIndex,open}){
+    let active=-1;
+    const selection=svgNode('g',{'pointer-events':'none'}),guide=svgNode('line',{y1:top,y2:bottom,class:'sleep-chart-guide'});selection.append(guide);
+    const dots=series.map(line=>{const dot=svgNode('circle',{r:4,fill:line.color,stroke:'#fffefb','stroke-width':2});selection.append(dot);return dot;});
+    const hit=svgNode('rect',{x:0,y:top,width,height:bottom-top,fill:'transparent','pointer-events':'all'});svg.append(hit,selection);
+    svg.classList.add('sleep-interactive-plot');svg.setAttribute('tabindex','0');svg.setAttribute('aria-label',label+'. Use left and right arrow keys to inspect values.'+(expanded?'':' Press Enter to enlarge.'));
+    const readout=node('div',null,'sleep-chart-readout');readout.setAttribute('role','status');readout.setAttribute('aria-live','polite');readout.setAttribute('aria-atomic','true');
+    const show=index=>{
+      index=Math.max(0,Math.min(rows.length-1,index));if(index===active)return;active=index;
+      const row=rows[index];guide.setAttribute('x1',px(index));guide.setAttribute('x2',px(index));readout.replaceChildren(node('strong',row.label||row.day));
+      series.forEach((line,i)=>{const value=row[line.key];dots[i].setAttribute('cx',px(index));dots[i].setAttribute('cy',valid(value)?py(value):top);dots[i].style.display=valid(value)?'':'none';const item=node('span',`${line.name}: ${valid(value)?(line.format||format)(value):'—'}`);item.style.setProperty('--color',line.color);readout.append(item);});
+    };
+    const point=event=>{
+      const box=svg.getBoundingClientRect(),x=(event.clientX-box.left)/box.width*width;
+      let nearest=0;for(let i=1;i<rows.length;i++)if(Math.abs(px(i)-x)<Math.abs(px(nearest)-x))nearest=i;
+      show(nearest);
+    };
+    svg.addEventListener('pointermove',point);svg.addEventListener('pointerdown',point);
+    svg.addEventListener('click',event=>{point(event);if(!expanded)open(active);});
+    svg.addEventListener('keydown',event=>{
+      if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();show(event.key==='Home'?0:event.key==='End'?rows.length-1:active+(event.key==='ArrowLeft'?-1:1));}
+      else if(!expanded && ['Enter',' '].includes(event.key)){event.preventDefault();open(active);}
+    });
+    const scroll=node('div',null,'sleep-plot-scroll'),frame=node('div',null,'sleep-plot-frame');frame.append(svg);scroll.append(frame);target.append(scroll,readout);
+    target.append(node('p',expanded?'Hover or tap anywhere on the plot for values. Use ← / → to move between points; press Escape to close.':'Hover over the plot for values. Click the graph or Enlarge for a larger view. Arrow keys move between points.','sleep-chart-caption'));
+    const lastKnown=rows.findLastIndex(row=>series.some(line=>valid(row[line.key])));
+    show(initialIndex??(lastKnown>=0?lastKnown:rows.length-1));
+  }
+  function chart(target,rows,series,{format=String,zero=true,label='Sleep trend',x='day',expanded=false,initialIndex}={}){
     target.replaceChildren();legend(target,series);
     const values=rows.flatMap(row=>series.map(line=>row[line.key])).filter(valid);
     if(!values.length){target.append(node('p','No measurements for this range.','sleep-empty'));return;}
-    const w=620,h=230,l=57,r=12,t=15,b=32,plotW=w-l-r,plotH=h-t-b;
+    const open=index=>enlargePlot(label,(box,selectedIndex)=>chart(box,rows,series,{format,zero,label,x,expanded:true,initialIndex:selectedIndex}),index);
+    plotTools(target,label,open,expanded);
+    const w=expanded?920:620,h=expanded?370:230,l=expanded?75:57,r=12,t=15,b=32,plotW=w-l-r,plotH=h-t-b;
     let min=zero?Math.min(0,...values):Math.floor(Math.min(...values)/30)*30,max=zero?Math.max(...values)*1.08:Math.ceil(Math.max(...values)/30)*30;
     if(max===min)max=min+1;
     const svg=svgNode('svg',{viewBox:`0 0 ${w} ${h}`,role:'img','aria-label':label,class:'sleep-svg'});
@@ -30,7 +78,8 @@
       rows.forEach((row,index)=>{const value=row[line.key];if(!valid(value)){previous=-1;return;}path+=`${previous<0 || dates[index]-dates[previous]>129600000?'M':'L'}${px(index)},${py(value)} `;previous=index;const dot=svgNode('circle',{cx:px(index),cy:py(value),r:2.4,fill:line.color});dot.append(svgNode('title',{},`${row[x]} · ${line.name}: ${format(value)}`));svg.append(dot);});
       svg.append(svgNode('path',{d:path,stroke:line.color}));
     }
-    target.append(svg,node('p','Hover over points for values. Gaps indicate missing nights.','sleep-chart-caption'));
+    interactivePlot(target,svg,rows,series,{px,py,width:w,top:t,bottom:h-b,format,label,expanded,initialIndex,open});
+    target.append(node('p','Gaps indicate missing nights. Values are shown for the nearest recorded night.','sleep-chart-caption'));
   }
   function overview(){const box=$('sleep-overview');box.replaceChildren();const s=data.summary;
     for(const [name,value,detail] of [
@@ -58,15 +107,30 @@
   }
   function selectNight(id,scroll=false){selected=id;$('sleep-night').value=id;renderNight();timeline();if(scroll)$('sleep-night-detail').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});}
   function nightMetrics(parent,values){const box=node('div',null,'sleep-night-metrics');for(const [name,value] of values){const item=node('div');item.append(node('span',name),node('strong',value));box.append(item);}parent.append(box);}
-  function samples(target,night,key,title,color){const value=night.samples[key];
+  function samples(target,night,key,title,color,{expanded=false,initialIndex}={}){const value=night.samples[key];
+    target.replaceChildren();if(!expanded)target.append(node('h3',title));
     if(!value || !Array.isArray(value.items) || !valid(value.interval)){target.append(node('p',`No ${title} samples for this period.`,'small'));return;}
-    const w=600,h=180,l=40,t=14,b=28,values=value.items.filter(valid);if(!values.length){target.append(node('p',`No ${title} samples for this period.`,'small'));return;}
+    const w=expanded?920:600,h=expanded?370:180,l=40,t=14,b=28,values=value.items.filter(valid);if(!values.length){target.append(node('p',`No ${title} samples for this period.`,'small'));return;}
+    const label=`${title} through the night (${night.day})`,open=index=>enlargePlot(label,(box,selectedIndex)=>samples(box,night,key,title,color,{expanded:true,initialIndex:selectedIndex}),index);
+    plotTools(target,label,open,expanded);
     const min=Math.max(0,Math.min(...values)-5),max=Math.max(...values)+5,svg=svgNode('svg',{viewBox:`0 0 ${w} ${h}`,class:'sleep-svg',role:'img','aria-label':`${title} through the night`});let path='',previous=false;
-    value.items.forEach((v,index)=>{if(!valid(v)){previous=false;return;}const x=l+index/Math.max(value.items.length-1,1)*(w-l-10),y=t+(max-v)/(max-min)*(h-t-b);path+=`${previous?'L':'M'}${x},${y} `;previous=true;});
+    const px=index=>l+index/Math.max(value.items.length-1,1)*(w-l-10),py=v=>t+(max-v)/(max-min)*(h-t-b);
+    value.items.forEach((v,index)=>{if(!valid(v)){previous=false;return;}path+=`${previous?'L':'M'}${px(index)},${py(v)} `;previous=true;});
     svg.append(svgNode('path',{d:path,stroke:color}),svgNode('text',{x:0,y:t+5},Math.round(max)),svgNode('text',{x:0,y:h-b},Math.round(min)),svgNode('text',{x:l,y:h-5},clock(value.timestamp||night.bedtime)),svgNode('text',{x:w-10,y:h-5,'text-anchor':'end'},clock(new Date(Date.parse(value.timestamp||night.bedtime)+(value.items.length-1)*value.interval*1000).toISOString())));
     // Last axis label uses the recorded offset, not the viewer device's timezone.
     const base=clockNumber(Number((value.timestamp||night.bedtime).slice(11,13))*60+Number((value.timestamp||night.bedtime).slice(14,16))+(value.items.length-1)*value.interval/60);svg.lastChild.textContent=base;
-    target.append(node('h3',title),svg);
+    const start=value.timestamp||night.bedtime,startMinutes=Number(start.slice(11,13))*60+Number(start.slice(14,16));
+    const rows=value.items.map((item,index)=>({label:`${night.day} · ${clockNumber(startMinutes+index*value.interval/60)}`,value:item}));
+    interactivePlot(target,svg,rows,[{key:'value',name:title,color}],{px,py,width:w,top:t,bottom:h-b,format:v=>metric(v),label,expanded,initialIndex,open});
+  }
+  function wakeHours(target,rows,{expanded=false,initialIndex}={}){
+    target.replaceChildren();const label='Awake minutes by local clock hour',open=index=>enlargePlot(label,(box,selectedIndex)=>wakeHours(box,rows,{expanded:true,initialIndex:selectedIndex}),index);
+    plotTools(target,label,open,expanded);
+    const w=expanded?920:620,h=expanded?370:220,left=36,base=h-35,step=(w-left-8)/24,max=Math.max(1,...rows.map(item=>item.awake_minutes));
+    const px=index=>left+(index+.5)*step,py=value=>base-value/max*(base-20),svg=svgNode('svg',{viewBox:`0 0 ${w} ${h}`,role:'img','aria-label':label,class:'sleep-svg'});
+    rows.forEach((item,index)=>{const height=base-py(item.awake_minutes);svg.append(svgNode('rect',{x:left+index*step+2,y:base-height,width:step-6,height,fill:colors.awake}));if(index%4===0)svg.append(svgNode('text',{x:left+index*step,y:h-13},String(item.hour).padStart(2,'0')));});
+    const labeled=rows.map(item=>({...item,label:clockNumber(item.hour*60)}));
+    interactivePlot(target,svg,labeled,[{key:'awake_minutes',name:'Total awake minutes',color:colors.awake}],{px,py,width:w,top:15,bottom:base,format:mins,label,expanded,initialIndex,open});
   }
   function renderNight(){const box=$('sleep-night-detail');box.replaceChildren();const night=data.nights.find(item=>item.id===selected);if(!night){box.append(node('p','Choose a night with a main sleep session.','sleep-empty'));return;}
     box.append(node('p',`${night.day} · ${night.stage_resolution_seconds?night.stage_resolution_seconds+'-second stages':'Stages unavailable'} · ${night.period_count} recorded sleep period${night.period_count===1?'':'s'}`,'small'));
@@ -78,7 +142,9 @@
     for(const event of events){const row=node('div',null,'sleep-event');row.append(node('strong',`${clock(event.start)}–${clock(event.end)}`),node('span',duration(event.minutes)));box.append(row);}
     const clusters=night.disrupted_windows.filter(item=>item.span_minutes>item.awake_minutes);
     if(clusters.length){box.append(node('h3','Long disrupted stretches with brief sleep between awakenings'));box.append(node('p','These group awake episodes separated by at most five minutes of detected sleep. The entire stretch is not counted as awake.','small'));for(const item of clusters){const row=node('div',null,'sleep-event');row.append(node('strong',`${clock(item.start)}–${clock(item.end)}`),node('span',`${mins(item.awake_minutes)} awake across ${mins(item.span_minutes)}`));box.append(row);}}
-    const reported=night.reported_sleep;box.append(node('p',`Evening caffeine log (${night.caffeine_day}): ${night.caffeine_after_4pm===null?'unknown':night.caffeine_after_4pm?'after 4 p.m.':'none after 4 p.m.'}. Morning self-report: ${Object.keys(reported).length?Object.entries(reported).filter(([,v])=>v===true).map(([key])=>({woke_up:'woke up',awake_20_minutes:'20+ minutes',awake_30_minutes:'30+ minutes (older option)',awake_1_hour:'1+ hour',awake_2_hours:'2+ hours'}[key]||key)).join(', ')||'no interruptions checked':'not logged'}.`,'small'));
+    const reported=night.reported_sleep;
+    const reportText=Object.keys(reported).length?' Historical morning report: '+(Object.entries(reported).filter(([,v])=>v===true).map(([key])=>({woke_up:'woke up',awake_20_minutes:'20+ minutes',awake_30_minutes:'30+ minutes (older option)',awake_1_hour:'1+ hour',awake_2_hours:'2+ hours'}[key]||key)).join(', ')||'no interruptions checked')+'.':'';
+    box.append(node('p',`Evening caffeine log (${night.caffeine_day}): ${night.caffeine_after_4pm===null?'unknown':night.caffeine_after_4pm?'after 4 p.m.':'none after 4 p.m.'}.${reportText}`,'small'));
     const curves=node('div',null,'sleep-physiology-night');for(const [key,title,color] of [['heart_rate','Heart rate (bpm)',colors.asleep],['hrv','HRV (ms)',colors.hrv]]){const cell=node('div');samples(cell,night,key,title,color);curves.append(cell);}box.append(curves);
     const others=data.sessions.filter(item=>item.day===night.day && item.id!==night.id);if(others.length){box.append(node('h3','Other recorded sleep periods'));for(const item of others)box.append(node('p',`${item.type||'Sleep'}: ${clock(item.bedtime)}–${clock(item.out_of_bed)}, ${duration(item.asleep_minutes)} asleep.`,'small'));}
     const rec=night.bedtime_recommendation;if(rec?.recommendation)box.append(node('p','Oura bedtime recommendation: '+rec.recommendation.replaceAll('_',' ')+'.','small'));
@@ -96,10 +162,21 @@
     chart($('sleep-wake-chart'),data.nights,[{key:'longest_wake_minutes',name:'Longest awakening',color:colors.awake},{key:'latency_minutes',name:'Latency',color:colors.asleep}],{format:v=>`${Math.round(v)}m`,label:'Longest awakening and time to fall asleep in minutes'});
     chart($('sleep-physiology-chart'),data.nights,[{key:'heart_rate',name:'Heart rate (bpm)',color:colors.asleep},{key:'hrv',name:'HRV (ms)',color:colors.hrv}],{format:v=>String(Math.round(v)),label:'Average sleeping heart rate in bpm and HRV in milliseconds'});
     chart($('sleep-stages-chart'),data.nights,[{key:'deep_minutes',name:'Deep',color:colors.deep},{key:'light_minutes',name:'Light',color:colors.light},{key:'rem_minutes',name:'REM',color:colors.rem}],{format:v=>`${Math.round(v)}m`,label:'Deep, light and REM sleep minutes by night'});
-    const hours=$('sleep-hours-chart');hours.replaceChildren();const svg=svgNode('svg',{viewBox:'0 0 620 220',role:'img','aria-label':'Awake minutes by local clock hour from awakenings lasting at least five minutes',class:'sleep-svg'}),max=Math.max(1,...data.wake_hours.map(item=>item.awake_minutes));for(const item of data.wake_hours){const x=36+item.hour*24,height=item.awake_minutes/max*165,bar=svgNode('rect',{x,y:185-height,width:17,height,fill:colors.awake});bar.append(svgNode('title',{},`${clockNumber(item.hour*60)}: ${Math.round(item.awake_minutes)} awake minutes`));svg.append(bar);if(item.hour%4===0)svg.append(svgNode('text',{x,y:207},String(item.hour).padStart(2,'0')));}hours.append(svg);table();$('sleep-method').textContent=data.method;
+    wakeHours($('sleep-hours-chart'),data.wake_hours);table();$('sleep-method').textContent=data.method;
   }
-  function range(){const value=$('sleep-range').value,to=new Date();if(value==='custom')return;const from=new Date(to);if(value==='all')from.setFullYear(2015,0,1);else from.setDate(to.getDate()-Number(value)+1);$('sleep-from').value=dateKey(from);$('sleep-to').value=dateKey(to);}
-  async function load(){const id=++loading;$('sleep-status').textContent='Loading sleep history…';try{const result=await api(`/api/oura/sleep-analysis?start=${encodeURIComponent($('sleep-from').value)}&end=${encodeURIComponent($('sleep-to').value)}`);if(id!==loading)return;data=result;render();const inventory=data.inventory.find(item=>item.kind==='sleep');$('sleep-status').textContent=`${data.coverage.nights} recorded main-sleep nights · ${data.coverage.stage_nights} with usable stages · ${data.coverage.missing_days} calendar days without a main-sleep record. ${inventory?`Imported sleep history: ${inventory.start} through ${inventory.end}.`:''}`;}catch(error){if(id===loading)$('sleep-status').textContent=error.message;}}
+  function range(){const value=$('sleep-range').value,to=new Date();if(value==='custom')return;const from=new Date(to);if(value==='all')from.setFullYear(2015,0,1);else from.setDate(to.getDate()-Number(value)+1);$('sleep-from').value=analysisStart && dateKey(from)<analysisStart?analysisStart:dateKey(from);$('sleep-to').value=dateKey(to);}
+  async function load(){
+    const id=++loading;$('sleep-status').textContent='Loading sleep history…';
+    try{
+      const result=await api(`/api/oura/sleep-analysis?start=${encodeURIComponent($('sleep-from').value)}&end=${encodeURIComponent($('sleep-to').value)}`);
+      if(id!==loading)return;
+      data=result;analysisStart=data.analysis_start||null;
+      $('sleep-from').value=data.start;
+      for(const field of ['sleep-from','sleep-to']){if(analysisStart)$(field).min=analysisStart;else $(field).removeAttribute('min');}
+      render();const inventory=data.inventory.find(item=>item.kind==='sleep');
+      $('sleep-status').textContent=`${data.coverage.nights} recorded main-sleep nights · ${data.coverage.stage_nights} with usable stages · ${data.coverage.missing_days} calendar days without a main-sleep record. ${inventory?`Included sleep history: ${inventory.start} through ${inventory.end}.`:''}`;
+    }catch(error){if(id===loading)$('sleep-status').textContent=error.message;}
+  }
   async function importStatus(){
     try{
       const state=await api('/api/oura/status');$('sleep-import').disabled=state.history_running||!state.connected;

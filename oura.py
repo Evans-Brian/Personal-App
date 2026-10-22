@@ -55,8 +55,9 @@ class OuraStore:
                 ON CONFLICT(kind,id) DO UPDATE SET day=excluded.day,
                 payload_json=excluded.payload_json, imported_at=CURRENT_TIMESTAMP''', rows)
 
-    def inventory(self):
+    def inventory(self, start=None):
         with self.connect() as db:
             return [{'kind': kind, 'count': count, 'start': start, 'end': end}
                     for kind, count, start, end in db.execute(
-                        'SELECT kind,COUNT(*),MIN(day),MAX(day) FROM oura_records GROUP BY kind')]
+                        'SELECT kind,COUNT(*),MIN(day),MAX(day) FROM oura_records WHERE day >= ? GROUP BY kind',
+                        (start or '0001-01-01',))]

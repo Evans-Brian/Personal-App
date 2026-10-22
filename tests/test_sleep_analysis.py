@@ -87,11 +87,33 @@ class SleepAnalysisTests(unittest.TestCase):
             value=analyze(store,journal,'2026-10-22','2026-10-22')
             self.assertEqual(value['nights'][0]['caffeine_day'],'2026-10-21')
 
+    def test_analysis_baseline_excludes_earlier_records_from_every_rollup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            store.import_records('sleep',[
+                sleep(id='before',day='2026-09-07',total_sleep_duration=600),
+                sleep(id='on-baseline',day='2026-09-08'),
+            ])
+            value=analyze(store,start='2026-08-01',end='2026-09-09',analysis_start='2026-09-08')
+            self.assertEqual(value['start'],'2026-09-08')
+            self.assertEqual(value['analysis_start'],'2026-09-08')
+            self.assertEqual([night['day'] for night in value['nights']],['2026-09-08'])
+            self.assertEqual([item['id'] for item in value['sessions']],['on-baseline'])
+            self.assertEqual(value['summary']['asleep_minutes']['mean'],36)
+            self.assertEqual(value['monthly'][0]['n'],1)
+            self.assertEqual(value['coverage']['calendar_days'],2)
+            self.assertEqual(value['coverage']['missing_days'],1)
+            self.assertEqual(value['inventory'][0]['start'],'2026-09-08')
+            self.assertEqual(value['inventory'][0]['count'],1)
+            self.assertEqual(len(store.read_range('2026-08-01','2026-09-09')),2)
+            with self.assertRaisesRegex(ValueError,'Earlier data is ignored'):
+                analyze(store,start='2026-08-01',end='2026-09-07',analysis_start='2026-09-08')
+
     def test_analysis_http_route_and_invalid_range(self):
         from app import make_server
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
-            server=make_server(root/'vault',root/'data'/'oura.sqlite3',0)
+            server=make_server(root/'vault',root/'data'/'oura.sqlite3',0,sleep_start='2026-09-08')
             store=OuraStore(root/'data'/'oura.sqlite3')
             store.import_records('sleep',[sleep()])
             threading.Thread(target=server.serve_forever,daemon=True).start()
@@ -101,6 +123,10 @@ class SleepAnalysisTests(unittest.TestCase):
                 response=connection.getresponse()
                 self.assertEqual(response.status,200)
                 self.assertEqual(json.loads(response.read())['nights'][0]['waso_minutes'],20)
+                connection.request('GET','/api/oura/sleep-analysis?start=2015-01-01&end=2026-10-22')
+                response=connection.getresponse()
+                self.assertEqual(response.status,200)
+                self.assertEqual(json.loads(response.read())['start'],'2026-09-08')
                 connection.request('GET','/api/oura/sleep-analysis?start=2026-10-22&end=2026-10-21')
                 response=connection.getresponse()
                 self.assertEqual(response.status,400)

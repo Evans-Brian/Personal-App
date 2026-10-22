@@ -49,7 +49,7 @@
     const match=text.match(/<!-- morning-sleep: (.*?) -->/);
     let value={woke_up:false,awake_20_minutes:false,awake_1_hour:false,awake_2_hours:false};
     if(match){try{value={...value,...JSON.parse(decodeURIComponent(match[1]))};}catch{}}
-    return {body:text.replace(/\n?<!-- morning-sleep: .*? -->\s*$/,''),value};
+    return {body:text.replace(/\n?<!-- morning-sleep: .*? -->\s*$/,''),value,metadata:match?'\n'+match[0]+'\n':''};
   }
   function serializeSleep(value){return '\n<!-- morning-sleep: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
   function split(text){

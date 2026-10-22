@@ -15,7 +15,7 @@ URL = 'http://127.0.0.1:8765'
 
 
 def main():
-    from app import configured_vault, configured_remote, make_server
+    from app import configured_vault, configured_remote, configured_sleep_start, make_server
     try:
         with urlopen(URL + '/api/config', timeout=2) as response:
             running = json.load(response)
@@ -27,7 +27,7 @@ def main():
         return
     except (ConnectionError, OSError):
         pass
-    server = make_server(configured_vault(), ROOT / 'data' / 'oura.sqlite3', remote=configured_remote())
+    server = make_server(configured_vault(), ROOT / 'data' / 'oura.sqlite3', remote=configured_remote(), sleep_start=configured_sleep_start())
     server.oura_sync.start_worker()
     logging.info('Journal listening on %s', URL)
     if '--background' not in sys.argv:
