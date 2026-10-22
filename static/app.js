@@ -110,7 +110,6 @@ function content() {
   const metadata=period==='morning'?JournalPlans.serializeSleep({
     woke_up:el('woke-up-last-night').checked,
     awake_20_minutes:el('awake-20-minutes').checked,
-    awake_30_minutes:el('awake-30-minutes').checked,
     awake_1_hour:el('awake-1-hour').checked,
     awake_2_hours:el('awake-2-hours').checked
   }):JournalPlans.serializeHabits({
@@ -324,7 +323,6 @@ function showEditor(text, preferGuided=true) {
     const options=[
       ['woke-up-last-night','woke_up','Woke up during the night'],
       ['awake-20-minutes','awake_20_minutes','Awake for 20+ minutes'],
-      ['awake-30-minutes','awake_30_minutes','Awake for 30+ minutes'],
       ['awake-1-hour','awake_1_hour','Awake for 1+ hour'],
       ['awake-2-hours','awake_2_hours','Awake for 2+ hours']
     ];
