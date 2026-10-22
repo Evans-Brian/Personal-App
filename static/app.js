@@ -96,6 +96,27 @@ function parsePrompts(text) {
   if(period==='morning' && (JournalPlans.items(parsed[1].answer)===null || JournalPlans.items(parsed[2].answer,Infinity)===null))return null;
   return parsed;
 }
+function caffeinePicker(parent,habits){
+  const state=JournalPlans.caffeine(habits),box=document.createElement('section');box.className='prompt caffeine-picker';
+  const label=document.createElement('label');label.htmlFor='last-caffeine-intake';label.textContent='Last caffeine intake';
+  const hint=document.createElement('p');hint.textContent='Choose a time, use a quick choice, or mark no caffeine today.';
+  const input=document.createElement('input');input.type='time';input.id='last-caffeine-intake';input.step='60';input.value=state.intake && state.intake!=='none'?state.intake:'';input.dataset.intake=state.intake||'';input.dataset.edited='false';
+  const choices=document.createElement('div');choices.className='caffeine-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label','Quick caffeine times');
+  const status=document.createElement('p');status.id='caffeine-intake-status';status.className='small';status.setAttribute('role','status');input.setAttribute('aria-describedby',status.id);
+  const format=time=>{const [hour,minute]=time.split(':').map(Number);return `${hour%12||12}:${String(minute).padStart(2,'0')} ${hour<12?'a.m.':'p.m.'}`;};
+  const buttons=[];
+  const refresh=()=>{
+    const intake=input.dataset.intake,legacy=input.dataset.edited==='false' && state.legacy;
+    status.textContent=legacy?`Earlier entry: ${state.after4pm?'caffeine after 4 p.m.':'no caffeine after 4 p.m.'}; exact time not recorded.`:intake==='none'?'No caffeine today.':intake?`Last caffeine at ${format(intake)}`:'Not logged.';
+    for(const [button,value] of buttons)button.setAttribute('aria-pressed',String(!legacy && intake===value));
+  };
+  const choose=(intake,fromInput=false)=>{if(!fromInput)input.value=intake==='none'?'':intake;input.dataset.intake=intake;input.dataset.edited='true';refresh();changed();};
+  input.addEventListener('input',()=>choose(input.value,true));
+  for(const [value,text] of [['15:00','3 p.m.'],['16:00','4 p.m.'],['17:00','5 p.m.'],['18:00','6 p.m.'],['19:00','7 p.m.'],['none','No caffeine'],['','Not logged']]){
+    const button=document.createElement('button');button.type='button';button.textContent=text;button.addEventListener('click',()=>choose(value));choices.append(button);buttons.push([button,value]);
+  }
+  box.append(label,hint,input,choices,status);parent.append(box);refresh();
+}
 function content() {
   if (!guided) return el('entry').value;
   if(period==='morning'){
@@ -109,9 +130,9 @@ function content() {
   const prefix=period==='evening'?JournalPlans.serialize(reviewTasks.map((t,i)=>({...t,done:el(`plan-done-${i}`).checked})))+`### Daily ratings\n\nDay satisfaction: ${el('rating-good').value || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${el('rating-productive').value || 'unrated'}\nProductivity scale: 10\n\n`:'';
   // Retain historical morning metadata without collecting a new daily sleep report.
   const metadata=period==='morning'?JournalPlans.sleep(el('entry').value).metadata:JournalPlans.serializeHabits({
+    ...(el('last-caffeine-intake').dataset.edited==='true'?JournalPlans.withCaffeine(JournalPlans.habits(el('entry').value).value,el('last-caffeine-intake').dataset.intake):JournalPlans.habits(el('entry').value).value),
     phone_game_before_morning_work:el('phone-game-before-morning-work').checked,
-    phone_game_before_afternoon_work:el('phone-game-before-afternoon-work').checked,
-    caffeine_after_4pm:el('caffeine-after-4pm').checked
+    phone_game_before_afternoon_work:el('phone-game-before-afternoon-work').checked
   })+JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value});
   return (period==='morning'?'<!-- carry-review: '+encodeURIComponent(JSON.stringify(carryChoices))+' -->\n':'')+prefix+parts.map((p,i)=>{
     const answer=period==='morning' && (i===1 || i===2)?[...document.querySelectorAll(`[id^="${i===2?'optional':'plan'}-"].plan-input`)].map(field=>field.value.trim()).filter(Boolean).map(s=>`- ${s}`).join('\n'):el(`answer-${i}`).value.trim();
@@ -131,12 +152,7 @@ function showEditor(text, preferGuided=true) {
   el('guided').replaceChildren();
   el('plan-review').replaceChildren();
   if(guided && period==='evening'){
-    const value=JournalPlans.habits(text).value;
-    const box=document.createElement('section');box.className='prompt';
-    const title=document.createElement('h3');title.textContent='Evening check-in';box.append(title);
-    const label=document.createElement('label');label.className='plan-check';
-    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id='caffeine-after-4pm';checkbox.checked=value.caffeine_after_4pm===true;
-    checkbox.addEventListener('change',changed);label.append(checkbox,document.createTextNode('Had caffeine after 4 p.m.'));box.append(label);el('plan-review').append(box);
+    caffeinePicker(el('plan-review'),JournalPlans.habits(text).value);
   }
   if(guided && period==='evening'){
     const deferred=JournalPlans.review(entry.sections.morning).choices;

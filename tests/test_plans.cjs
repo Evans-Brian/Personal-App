@@ -47,7 +47,7 @@ const habitsValue={phone_game_before_morning_work:true,phone_game_before_afterno
 assertJO.deepEqual(joPlans.habits('Body'+joPlans.serializeHabits(habitsValue)).value,habitsValue);
 assertJO.equal(joPlans.split('Body'+joPlans.serializeHabits(habitsValue)+joPlans.serializeJO(joValue)).body,'Body');
 assertJO.equal(joPlans.habits('Old note').value.phone_game_before_morning_work,false);
-assertJO.equal(joPlans.habits('Old note').value.caffeine_after_4pm,false);
+assertJO.equal(joPlans.caffeine(joPlans.habits('Old note').value).after4pm,null);
 const sleepValue={woke_up:true,awake_20_minutes:true,awake_1_hour:false,awake_2_hours:false};
 assertJO.deepEqual(joPlans.sleep('Body'+joPlans.serializeSleep(sleepValue)).value,sleepValue);
 assertJO.equal(joPlans.sleep('Old note').value.woke_up,false);

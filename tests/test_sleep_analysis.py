@@ -8,7 +8,7 @@ import threading
 
 from journal import Journal
 from oura import OuraStore
-from sleep_analysis import analyze, session
+from sleep_analysis import analyze, session, caffeine_log
 
 
 def sleep(**overrides):
@@ -20,6 +20,29 @@ def sleep(**overrides):
 
 
 class SleepAnalysisTests(unittest.TestCase):
+    def test_caffeine_intake_distinguishes_times_none_unknown_and_legacy(self):
+        for intake, after in [('00:00',False),('08:45',False),('15:00',False),('16:00',False),('16:01',True),('17:00',True),('19:00',True),('23:59',True),('none',False),(None,None),('25:00',None),('7 p.m.',None),('17:00\n',None),(1700,None)]:
+            with self.subTest(intake=intake):
+                habits={'caffeine_last_intake':intake,'caffeine_after_4pm':True}
+                self.assertEqual(caffeine_log(habits),(intake if after is not None else None,after))
+        self.assertEqual(caffeine_log({}),(None,None))
+        self.assertEqual(caffeine_log({'caffeine_after_4pm':True}),(None,True))
+        self.assertEqual(caffeine_log({'caffeine_after_4pm':False}),(None,False))
+
+    def test_exact_caffeine_time_reaches_sleep_analysis_from_previous_evening(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            journal=Journal(Path(directory)/'vault')
+            store.import_records('sleep',[sleep(bedtime_start='2026-10-22T02:00:00-04:00',bedtime_end='2026-10-22T03:00:00-04:00')])
+            record=journal.read('2026-10-21')
+            for intake, after in [('15:00',False),('16:00',False),('17:00',True),('18:35',True),('none',False),(None,None)]:
+                content='<!-- evening-habits: '+quote(json.dumps({'caffeine_last_intake':intake}))+' -->'
+                record=journal.save(record['date'],'evening',content,record['revision'])
+                night=analyze(store,journal,'2026-10-22','2026-10-22')['nights'][0]
+                self.assertEqual(night['caffeine_day'],'2026-10-21')
+                self.assertEqual(night['caffeine_last_intake'],intake)
+                self.assertIs(night['caffeine_after_4pm'],after)
+
     def test_awakenings_exclude_latency_and_terminal_awake(self):
         value = session(sleep())
         self.assertEqual(value['waso_minutes'],20)

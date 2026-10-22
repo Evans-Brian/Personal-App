@@ -132,6 +132,19 @@ def metadata(journal, day, period, marker):
         return {}
 
 
+def caffeine_log(habits):
+    """Keep unknown logs and old checkbox answers distinct from precise intake times."""
+    intake = habits.get('caffeine_last_intake')
+    if intake == 'none':
+        return intake, False
+    if isinstance(intake, str) and re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', intake):
+        return intake, intake > '16:00'
+    if 'caffeine_last_intake' in habits:
+        return None, None
+    legacy = habits.get('caffeine_after_4pm')
+    return None, legacy if isinstance(legacy, bool) else None
+
+
 METRICS = ('asleep_minutes', 'in_bed_minutes', 'awake_minutes', 'waso_minutes', 'latency_minutes',
            'longest_wake_minutes', 'awakenings_5m', 'efficiency', 'hrv', 'heart_rate',
            'lowest_heart_rate', 'breathing_rate', 'deep_minutes', 'rem_minutes', 'light_minutes',
@@ -172,7 +185,7 @@ def insights(nights, summary, comparison):
     if len(yes) >= 5 and len(no) >= 5:
         result.append(f'After reported caffeine past 4 p.m., awake time during sleep averaged {round(mean(yes))} minutes ({len(yes)} nights), versus {round(mean(no))} without it ({len(no)} nights). This is an association and does not establish a cause.')
     else:
-        result.append(f'Caffeine comparison needs more logged nights: {len(yes)} with late caffeine and {len(no)} without it have usable stages. Missing or older checkbox data is unknown, not “no caffeine.”')
+        result.append(f'Caffeine comparison needs more logged nights: {len(yes)} with late caffeine and {len(no)} without it have usable stages. Missing logs are unknown; older checkbox answers do not supply an exact intake time.')
     # Compare the self-report against the same morning's overnight estimate.
     disagreements = [night for night in staged if night['reported_sleep'].get('awake_1_hour') is True and night['longest_wake_minutes'] < 60]
     if disagreements:
@@ -234,8 +247,7 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
         bedtime = stamp(night['bedtime'])
         caffeine_day = bedtime.date() - timedelta(days=1 if bedtime.hour < 12 else 0)
         habits = metadata(journal, caffeine_day.isoformat(), 'evening', 'evening-habits')
-        caffeine = habits.get('caffeine_after_4pm')
-        night['caffeine_after_4pm'] = caffeine if isinstance(caffeine, bool) else None
+        night['caffeine_last_intake'], night['caffeine_after_4pm'] = caffeine_log(habits)
         night['caffeine_day'] = caffeine_day.isoformat()
         night['reported_sleep'] = metadata(journal, day, 'morning', 'morning-sleep')
         nights.append(night)

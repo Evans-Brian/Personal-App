@@ -40,11 +40,23 @@
   function serializeJO(value){return '\n<!-- evening-jo: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
   function habits(text){
     const match=text.match(/<!-- evening-habits: (.*?) -->/);
-    let value={phone_game_before_morning_work:false,phone_game_before_afternoon_work:false,caffeine_after_4pm:false};
+    let value={phone_game_before_morning_work:false,phone_game_before_afternoon_work:false};
     if(match){try{value={...value,...JSON.parse(decodeURIComponent(match[1]))};}catch{}}
     return {body:text.replace(/\n?<!-- evening-habits: .*? -->\s*$/,''),value};
   }
   function serializeHabits(value){return '\n<!-- evening-habits: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
+  function caffeine(value){
+    const intake=value.caffeine_last_intake;
+    if(intake==='none')return {intake,after4pm:false,legacy:false};
+    if(typeof intake==='string' && intake.length===5 && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(intake))return {intake,after4pm:intake>'16:00',legacy:false};
+    const legacy=!Object.hasOwn(value,'caffeine_last_intake') && typeof value.caffeine_after_4pm==='boolean';
+    return {intake:null,after4pm:legacy?value.caffeine_after_4pm:null,legacy};
+  }
+  function withCaffeine(value,intake){
+    const result={...value,caffeine_last_intake:caffeine({caffeine_last_intake:intake}).intake};
+    delete result.caffeine_after_4pm;
+    return result;
+  }
   function sleep(text){
     const match=text.match(/<!-- morning-sleep: (.*?) -->/);
     let value={woke_up:false,awake_20_minutes:false,awake_1_hour:false,awake_2_hours:false};
@@ -80,6 +92,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={jo,serializeJO,habits,serializeHabits,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
