@@ -92,8 +92,8 @@
     ]){const item=node('div');item.append(node('span',name),node('strong',value),node('small',detail));box.append(item);}
   }
   function timeline(){const container=$('sleep-timeline');container.replaceChildren();const inner=node('div',null,'sleep-timeline-inner');
-    // Fit the actual night intervals, anchored to the noon before bedtime.
-    const left=960,right=2400;const axis=node('div',null,'sleep-axis');for(let hour=16;hour<=40;hour+=4)axis.append(node('span',clockNumber(hour*60)));inner.append(axis);
+    // Show 10 p.m. through 2 p.m. the following day; clip only the display.
+    const left=22*60,right=38*60;const axis=node('div',null,'sleep-axis');for(let hour=22;hour<=38;hour+=4)axis.append(node('span',clockNumber(hour*60)));inner.append(axis);
     for(const night of [...data.nights].reverse().slice(0,visibleNights)){
       const button=node('button',null,'sleep-night-row');button.type='button';button.setAttribute('aria-pressed',String(night.id===selected));button.setAttribute('aria-label',`Inspect sleep on ${night.day}`);button.append(node('span',night.day.slice(5)));
       const track=node('span',null,'sleep-track'),base=night.bedtime_clock;

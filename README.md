@@ -85,7 +85,7 @@ The private BJJ search index never includes personal journal text or Oura data. 
 
 ### Sleep dashboard
 
-The Sleep tab shows a local, interactive overnight timeline; trends for bedtime, estimated onset, final wake, sleep duration, total awake time, awake time during sleep, longest awakenings, latency, stages, HR and HRV; and a selected-night view with awakening clock times and physiological samples. Date presets and custom ranges operate on imported records. The detailed table provides a textual alternative to charts. Missing nights create chart gaps and never become zero-valued sleep. Each metric shows its own sample count.
+The Sleep tab shows a local, interactive overnight timeline from 10 p.m. to 2 p.m. the following day; trends for bedtime, estimated onset, final wake, sleep duration, total awake time, awake time during sleep, longest awakenings, latency, stages, HR and HRV; and a selected-night view with awakening clock times and physiological samples. The timeline clips its display to that window without changing stored sleep periods or calculations. Date presets and custom ranges operate on imported records. The detailed table provides a textual alternative to charts. Missing nights create chart gaps and never become zero-valued sleep. Each metric shows its own sample count.
 
 Click a graph or its **Enlarge** button to open a larger chart. Values appear in a persistent readout when moving anywhere across the plot; touch users can tap, and keyboard users can use Left/Right or Home/End. The date and all plotted series are shown together. Enlarged views close with **Close**, Escape, or the backdrop. On narrow screens enlarged plots can scroll horizontally while their value readout stays visible. Trend charts, hourly awakening bars and nightly HR/HRV curves use the same interaction.
 
@@ -145,6 +145,8 @@ node --check static/bjj.js
 node --check static/plans.js
 node --check static/restaurants.js
 node --check static/voice.js
+node --check static/sleep.js
+node tests/test_sleep_charts.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
