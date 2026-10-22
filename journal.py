@@ -226,6 +226,7 @@ class Journal:
                     answer = re.sub(r'^#{3,6} .*$', '', body, flags=re.M).strip()
                     answer = re.sub(r'^<!-- evening-jo: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- evening-habits: .*? -->\r?\n?', '', answer, flags=re.M).strip()
+                    answer = re.sub(r'^<!-- morning-sleep: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^<!-- carry-review: .*? -->\r?\n?', '', answer, flags=re.M).strip()
                     answer = re.sub(r'^(?:- \[ \] .*|(?:Good day|Day satisfaction|Productive day): unrated|(?:Day satisfaction|Productivity) scale: 10)\r?$', '', answer, flags=re.M).strip()
                     statuses[period] = 'written' if answer else ('blank' if start is not None else 'missing')

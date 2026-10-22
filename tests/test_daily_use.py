@@ -40,6 +40,17 @@ class DailyUseTests(unittest.TestCase):
         journal.save(record['date'], 'evening', PROMPTS['evening']+'A good walk.', record['revision'])
         self.assertEqual(journal.history()[0]['evening'], 'written')
 
+    def test_sleep_and_habit_metadata_do_not_make_blank_entries_written(self):
+        journal = Journal(self.root / 'vault')
+        record = journal.read('2026-09-17')
+        morning = PROMPTS['morning'] + '<!-- morning-sleep: %7B%22woke_up%22%3Atrue%7D -->\n'
+        record = journal.save(record['date'], 'morning', morning, record['revision'])
+        evening = PROMPTS['evening'] + '<!-- evening-habits: %7B%22caffeine_after_4pm%22%3Atrue%7D -->\n'
+        journal.save(record['date'], 'evening', evening, record['revision'])
+        history = journal.history()[0]
+        self.assertEqual(history['morning'], 'blank')
+        self.assertEqual(history['evening'], 'blank')
+
     def test_history_reads_ten_point_productivity(self):
         journal = Journal(self.root / 'vault')
         record = journal.read('2026-09-17')

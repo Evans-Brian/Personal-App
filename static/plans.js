@@ -40,11 +40,18 @@
   function serializeJO(value){return '\n<!-- evening-jo: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
   function habits(text){
     const match=text.match(/<!-- evening-habits: (.*?) -->/);
-    let value={phone_game_before_morning_work:false,phone_game_before_afternoon_work:false};
+    let value={phone_game_before_morning_work:false,phone_game_before_afternoon_work:false,caffeine_after_4pm:false};
     if(match){try{value={...value,...JSON.parse(decodeURIComponent(match[1]))};}catch{}}
     return {body:text.replace(/\n?<!-- evening-habits: .*? -->\s*$/,''),value};
   }
   function serializeHabits(value){return '\n<!-- evening-habits: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
+  function sleep(text){
+    const match=text.match(/<!-- morning-sleep: (.*?) -->/);
+    let value={woke_up:false,awake_20_minutes:false,awake_30_minutes:false,awake_1_hour:false,awake_2_hours:false};
+    if(match){try{value={...value,...JSON.parse(decodeURIComponent(match[1]))};}catch{}}
+    return {body:text.replace(/\n?<!-- morning-sleep: .*? -->\s*$/,''),value};
+  }
+  function serializeSleep(value){return '\n<!-- morning-sleep: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
   function split(text){
     text=habits(jo(text).body).body;
     const ratings={};
@@ -73,6 +80,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={jo,serializeJO,habits,serializeHabits,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={jo,serializeJO,habits,serializeHabits,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
