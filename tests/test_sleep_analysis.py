@@ -1,0 +1,115 @@
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from urllib.parse import quote
+import http.client
+import threading
+
+from journal import Journal
+from oura import OuraStore
+from sleep_analysis import analyze, session
+
+
+def sleep(**overrides):
+    value = {'id':'night','day':'2026-10-22','type':'long_sleep',
+             'bedtime_start':'2026-10-21T22:00:00-04:00','bedtime_end':'2026-10-21T23:00:00-04:00',
+             'time_in_bed':3600,'total_sleep_duration':2160,'awake_time':1440,'latency':120,
+             'sleep_phase_30_sec':'4'*4+'1'*20+'4'*40+'2'*52+'4'*4}
+    return {**value, **overrides}
+
+
+class SleepAnalysisTests(unittest.TestCase):
+    def test_awakenings_exclude_latency_and_terminal_awake(self):
+        value = session(sleep())
+        self.assertEqual(value['waso_minutes'],20)
+        self.assertEqual(value['longest_wake_minutes'],20)
+        self.assertEqual(value['awake_minutes'],24)
+        self.assertEqual(value['awakenings_5m'],1)
+        self.assertEqual(value['onset'],'2026-10-21T22:02:00-04:00')
+        self.assertEqual(value['final_wake'],'2026-10-21T22:58:00-04:00')
+        self.assertEqual(value['awakenings'][0]['start'],'2026-10-21T22:12:00-04:00')
+
+    def test_five_minute_fallback_and_missing_or_bad_coverage(self):
+        value = session(sleep(sleep_phase_30_sec=None,sleep_phase_5_min='412444222224'))
+        self.assertEqual(value['stage_resolution_seconds'],300)
+        self.assertEqual(value['waso_minutes'],15)
+        for phases in (None, '111', 'xx4'):
+            value = session(sleep(sleep_phase_30_sec=phases))
+            self.assertIsNone(value['waso_minutes'])
+            self.assertEqual(value['onset_source'],'bedtime + reported latency')
+
+    def test_all_awake_and_all_sleep_do_not_invent_events(self):
+        value = session(sleep(sleep_phase_30_sec='4'*120,latency=None))
+        self.assertIsNone(value['waso_minutes'])
+        self.assertIsNone(value['onset'])
+        value = session(sleep(sleep_phase_30_sec='2'*120))
+        self.assertEqual(value['waso_minutes'],0)
+        self.assertEqual(value['awakenings_5m'],0)
+
+    def test_disrupted_windows_preserve_brief_sleep_rather_than_counting_it_awake(self):
+        value = session(sleep(sleep_phase_30_sec='2'*10+'4'*30+'2'*4+'4'*30+'2'*46))
+        self.assertEqual(value['longest_wake_minutes'],15)
+        self.assertEqual(value['waso_minutes'],30)
+        self.assertEqual(value['disrupted_windows'][0]['span_minutes'],32)
+        self.assertEqual(value['disrupted_windows'][0]['awake_minutes'],30)
+
+    def test_offset_change_uses_elapsed_duration_and_reports_offset_caveat(self):
+        value = session(sleep(bedtime_start='2026-11-01T00:00:00-04:00',
+                              bedtime_end='2026-11-01T03:00:00-05:00',
+                              time_in_bed=14400,sleep_phase_30_sec='2'*480))
+        self.assertTrue(value['offset_changed'])
+        self.assertEqual(value['stage_coverage'],1)
+        self.assertEqual(value['waso_minutes'],0)
+
+    def test_naps_deleted_records_and_unknown_caffeine_are_handled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            journal=Journal(Path(directory)/'vault')
+            store.import_records('sleep',[sleep(),sleep(id='nap',type='sleep',total_sleep_duration=300),
+                                          sleep(id='deleted',type='deleted',total_sleep_duration=5000)])
+            value=analyze(store,journal,'2026-10-21','2026-10-22')
+            self.assertEqual(value['coverage']['nights'],1)
+            self.assertEqual(value['nights'][0]['id'],'night')
+            self.assertEqual(value['nights'][0]['period_count'],2)
+            self.assertIsNone(value['nights'][0]['caffeine_after_4pm'])
+            record=journal.read('2026-10-21')
+            journal.save(record['date'],'evening','<!-- evening-habits: '+quote(json.dumps({'caffeine_after_4pm':False}))+' -->',record['revision'])
+            self.assertIs(analyze(store,journal,'2026-10-21','2026-10-22')['nights'][0]['caffeine_after_4pm'],False)
+            with self.assertRaises(ValueError):
+                analyze(store,journal,'2026-10-22','2026-10-21')
+
+    def test_after_midnight_caffeine_links_to_previous_evening(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            journal=Journal(Path(directory)/'vault')
+            store.import_records('sleep',[sleep(bedtime_start='2026-10-22T02:00:00-04:00',bedtime_end='2026-10-22T03:00:00-04:00')])
+            value=analyze(store,journal,'2026-10-22','2026-10-22')
+            self.assertEqual(value['nights'][0]['caffeine_day'],'2026-10-21')
+
+    def test_analysis_http_route_and_invalid_range(self):
+        from app import make_server
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            server=make_server(root/'vault',root/'data'/'oura.sqlite3',0)
+            store=OuraStore(root/'data'/'oura.sqlite3')
+            store.import_records('sleep',[sleep()])
+            threading.Thread(target=server.serve_forever,daemon=True).start()
+            try:
+                connection=http.client.HTTPConnection('127.0.0.1',server.server_port)
+                connection.request('GET','/api/oura/sleep-analysis?start=2026-10-21&end=2026-10-22')
+                response=connection.getresponse()
+                self.assertEqual(response.status,200)
+                self.assertEqual(json.loads(response.read())['nights'][0]['waso_minutes'],20)
+                connection.request('GET','/api/oura/sleep-analysis?start=2026-10-22&end=2026-10-21')
+                response=connection.getresponse()
+                self.assertEqual(response.status,400)
+                response.read()
+                connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+
+
+if __name__ == '__main__':
+    unittest.main()

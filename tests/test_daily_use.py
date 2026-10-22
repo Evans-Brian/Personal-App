@@ -81,7 +81,7 @@ class DailyUseTests(unittest.TestCase):
         ticket = parse_qs(urlsplit(start).query)['ticket'][0]
         target, cookie = self.sync.authorize(ticket)
         query = parse_qs(urlsplit(target).query)
-        self.assertEqual(query['scope'], ['daily'])
+        self.assertEqual(query['scope'], ['daily spo2'])
         self.assertEqual(query['redirect_uri'], ['http://localhost:8766/api/oura/callback'])
         with self.assertRaises(ValueError):
             self.sync.authorize(ticket)
@@ -118,6 +118,7 @@ class DailyUseTests(unittest.TestCase):
             {'data':[{'id':'r1','day':'2026-09-17','score':85}]},
             {'data':[{'id':'a1','day':'2026-09-17','score':90,'steps':1234}]},
             {'data':[{'id':'sleep1','day':'2026-09-17','type':'long_sleep','average_hrv':42,'lowest_heart_rate':50,'total_sleep_duration':27000}]},
+            {'data':[]}, {'data':[]}, {'data':[]},
         ]
         with patch('oura_sync.fetch_json', side_effect=responses) as fetch:
             self.assertEqual(self.sync.sync(),5)
@@ -135,7 +136,7 @@ class DailyUseTests(unittest.TestCase):
                                 'refresh_token':'refresh','expires_at':time.time()+3600,'last_sync':'previous'})
         records=[{'id':'night','day':'2026-09-17','type':'long_sleep','average_hrv':None},
                  {'id':'nap','day':'2026-09-17','type':'late_nap','average_hrv':0}]
-        with patch('oura_sync.fetch_json',side_effect=[{'data':[]},{'data':[]},{'data':[]},{'data':records}]) as fetch:
+        with patch('oura_sync.fetch_json',side_effect=[{'data':[]},{'data':[]},{'data':[]},{'data':records},{'data':[]},{'data':[]},{'data':[]}]) as fetch:
             self.assertEqual(self.sync.sync(),2)
             query=parse_qs(urlsplit(fetch.call_args_list[3].args[0].full_url).query)
             self.assertEqual(query['start_date'],[(date.today()-timedelta(days=90)).isoformat()])
@@ -145,6 +146,41 @@ class DailyUseTests(unittest.TestCase):
             self.sync.sync()
             query=parse_qs(urlsplit(fetch.call_args_list[3].args[0].full_url).query)
             self.assertEqual(query['start_date'],[(date.today()-timedelta(days=30)).isoformat()])
+
+    def test_full_history_and_optional_permissions(self):
+        from oura_sync import OuraAPIError
+        self.sync.secrets.write({'client_id':'id','client_secret':'secret','access_token':'access',
+                                'refresh_token':'refresh','expires_at':time.time()+3600})
+        def response(request):
+            self.assertIn('start_date=2015-01-01', request.full_url)
+            if '/daily_spo2?' in request.full_url:
+                raise OuraAPIError('Missing scope', 401)
+            return {'data': []}
+        with patch('oura_sync.fetch_json',side_effect=response) as fetch:
+            self.assertEqual(self.sync.sync(history=True),0)
+        self.assertEqual(fetch.call_count,7)
+        self.assertIsNotNone(self.sync.status()['history_imported_at'])
+        self.assertEqual(self.sync.status()['optional_unavailable'],['daily_spo2'])
+
+    def test_history_status_stays_responsive_and_duplicate_job_is_reused(self):
+        import threading
+        self.sync.secrets.write({'client_id':'id','client_secret':'secret','access_token':'access',
+                                'refresh_token':'refresh','expires_at':time.time()+3600})
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        def fake_sync(history=False):
+            with self.sync.lock:
+                entered.set()
+                release.wait(3)
+                finished.set()
+        with patch.object(self.sync,'sync',side_effect=fake_sync):
+            try:
+                self.assertTrue(self.sync.start_history())
+                self.assertTrue(entered.wait(1))
+                self.assertTrue(self.sync.status()['history_running'])
+                self.assertFalse(self.sync.start_history())
+            finally:
+                release.set()
+                finished.wait(2)
 
     def test_failed_sync_does_not_claim_success(self):
         self.sync.secrets.write({'client_id':'id','client_secret':'secret','access_token':'access',

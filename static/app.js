@@ -631,7 +631,7 @@ async function ouraStatus(){
   el('oura-connect').textContent=state.connected?'Reconnect Oura':'Connect Oura';
   el('oura-sync').disabled=!state.connected || state.syncing;
   el('oura-disconnect').hidden=!state.connected;
-  el('oura-status').textContent=state.error || (state.connected?(state.last_sync?`Last synced ${new Date(state.last_sync).toLocaleString()}. Checks hourly while the app is running.`:'Connected. The first sync will import the past 90 days.'):'Connect your Oura account to import sleep, readiness, and activity.');
+  el('oura-status').textContent=state.error || (state.history_running?`Importing Oura history: ${state.history_progress?.collection || 'starting'} · ${state.history_progress?.records || 0} records.`:state.connected?(state.last_sync?`Last synced ${new Date(state.last_sync).toLocaleString()}. Checks hourly while the app is running. Open Sleep for full history and trends.`:'Connected. The first sync will import the past 90 days.'):'Connect your Oura account to import sleep, readiness, and activity.');
   return state;
 }
 const post=(url,data={})=>request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});

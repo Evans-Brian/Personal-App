@@ -39,7 +39,8 @@ class OuraStore:
                 "SELECT kind,payload_json FROM oura_records WHERE day BETWEEN ? AND ? ORDER BY day,kind,id", (start, end))]
 
     def import_records(self, kind, records):
-        if kind not in ('daily_sleep', 'daily_readiness', 'daily_activity', 'sleep'):
+        if kind not in ('daily_sleep', 'daily_readiness', 'daily_activity', 'sleep',
+                        'daily_spo2', 'sleep_time', 'daily_stress'):
             raise ValueError('Unsupported Oura summary type.')
         rows = []
         for record in records:
@@ -53,3 +54,9 @@ class OuraStore:
             db.executemany('''INSERT INTO oura_records(kind,id,day,payload_json) VALUES(?,?,?,?)
                 ON CONFLICT(kind,id) DO UPDATE SET day=excluded.day,
                 payload_json=excluded.payload_json, imported_at=CURRENT_TIMESTAMP''', rows)
+
+    def inventory(self):
+        with self.connect() as db:
+            return [{'kind': kind, 'count': count, 'start': start, 'end': end}
+                    for kind, count, start, end in db.execute(
+                        'SELECT kind,COUNT(*),MIN(day),MAX(day) FROM oura_records GROUP BY kind')]

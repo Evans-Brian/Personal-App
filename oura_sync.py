@@ -10,6 +10,13 @@ from urllib.error import HTTPError, URLError
 from secrets_store import SecretStore
 
 KINDS = ('daily_sleep', 'daily_readiness', 'daily_activity', 'sleep')
+OPTIONAL_KINDS = ('daily_spo2', 'sleep_time', 'daily_stress')
+
+
+class OuraAPIError(ValueError):
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
 
 
 def fetch_json(request):
@@ -20,7 +27,7 @@ def fetch_json(request):
         messages = {401: 'Oura authorization expired. Reconnect your account.',
                     403: 'Oura denied daily-summary access. Check permissions and membership.',
                     429: 'Oura rate limit reached. Try again later.'}
-        raise ValueError(messages.get(exc.code, f'Oura request failed (HTTP {exc.code}).')) from None
+        raise OuraAPIError(messages.get(exc.code, f'Oura request failed (HTTP {exc.code}).'), exc.code) from None
     except (URLError, TimeoutError, OSError, json.JSONDecodeError):
         raise ValueError('Could not reach Oura. Check your connection and try again.') from None
 
@@ -38,13 +45,19 @@ class OuraSync:
         self.syncing = False
         self.stop = threading.Event()
         self.last_attempt = 0
+        self.history_running = False
+        self.history_progress = None
+        self.history_lock = threading.Lock()
 
     def status(self):
-        with self.lock:
-            saved = self.secrets.read()
-            return {'configured': bool(saved.get('client_id')), 'connected': bool(saved.get('refresh_token')),
-                    'last_sync': saved.get('last_sync'), 'error': self.error,
-                    'syncing': self.syncing, 'redirect_uri': self.redirect_uri}
+        # Credential files are replaced atomically; progress must remain readable during an import.
+        saved = self.secrets.read()
+        return {'configured': bool(saved.get('client_id')), 'connected': bool(saved.get('refresh_token')),
+                'last_sync': saved.get('last_sync'), 'error': self.error,
+                'syncing': self.syncing, 'redirect_uri': self.redirect_uri,
+                'history_running': self.history_running, 'history_progress': self.history_progress,
+                'history_imported_at': saved.get('history_imported_at'),
+                'optional_unavailable': saved.get('optional_unavailable', [])}
 
     def configure(self, client_id, client_secret):
         if not all(isinstance(x, str) and 0 < len(x.strip()) < 2000 for x in (client_id, client_secret)):
@@ -64,7 +77,7 @@ class OuraSync:
             self.states = {state: (cookie, time.time() + 600)}
             url = 'https://cloud.ouraring.com/oauth/authorize?' + urlencode({
                 'response_type': 'code', 'client_id': saved['client_id'],
-                'redirect_uri': self.redirect_uri, 'scope': 'daily', 'state': state})
+                'redirect_uri': self.redirect_uri, 'scope': 'daily spo2', 'state': state})
             ticket = secrets.token_urlsafe(32)
             self.starts = {ticket: (url, cookie, time.time()+600)}
             return f'http://localhost:{self.port}/api/oura/authorize?ticket={ticket}'
@@ -107,7 +120,26 @@ class OuraSync:
             self.starts.clear()
             self.error = None
 
-    def sync(self):
+    def start_history(self):
+        if not self.history_lock.acquire(blocking=False):
+            return False
+        if not self.status()['connected']:
+            self.history_lock.release()
+            raise ValueError('Connect your Oura account first.')
+        self.history_running = True
+        self.history_progress = {'collection': 'starting', 'records': 0}
+        def run():
+            try:
+                self.sync(history=True)
+            except (ValueError, OSError) as exc:
+                self.error = str(exc)
+            finally:
+                self.history_running = False
+                self.history_lock.release()
+        threading.Thread(target=run, daemon=True).start()
+        return True
+
+    def sync(self, history=False):
         with self.lock:
             self.syncing = True
             self.last_attempt = time.time()
@@ -120,11 +152,12 @@ class OuraSync:
                 token = saved.get('access_token')
                 if time.time() >= saved.get('expires_at', 0) - 120:
                     token = self.exchange({'grant_type': 'refresh_token', 'refresh_token': saved['refresh_token']})
-                start = date.today() - timedelta(days=30 if saved.get('last_sync') else 90)
+                start = date(2015, 1, 1) if history else date.today() - timedelta(days=30 if saved.get('last_sync') else 90)
                 end = date.today() + timedelta(days=1)
                 count = 0
-                for kind in KINDS:
-                    kind_start = date.today() - timedelta(days=90) if kind == 'sleep' and not saved.get('sleep_details_imported') else start
+                unavailable = []
+                for kind in KINDS + OPTIONAL_KINDS:
+                    kind_start = date.today() - timedelta(days=90) if not history and kind == 'sleep' and not saved.get('sleep_details_imported') else start
                     next_token = None
                     seen = set()
                     for _ in range(100):
@@ -132,7 +165,21 @@ class OuraSync:
                         if next_token:
                             params['next_token'] = next_token
                         url = f'https://api.ouraring.com/v2/usercollection/{kind}?' + urlencode(params)
-                        result = fetch_json(Request(url, headers={'Authorization': f'Bearer {token}'}))
+                        if history:
+                            self.history_progress = {'collection': kind, 'records': count}
+                        # Long imports can cross an access-token expiry boundary.
+                        if time.time() >= self.secrets.read().get('expires_at', 0) - 120:
+                            latest = self.secrets.read()
+                            token = self.exchange({'grant_type': 'refresh_token', 'refresh_token': latest['refresh_token']})
+                        try:
+                            result = fetch_json(Request(url, headers={'Authorization': f'Bearer {token}'}))
+                        except OuraAPIError as exc:
+                            # Oura also returns 401 for a collection outside the granted scopes.
+                            # Core daily collections have already succeeded with this same token.
+                            if kind in OPTIONAL_KINDS and exc.status in (401, 403, 404):
+                                unavailable.append(kind)
+                                break
+                            raise
                         records = result.get('data')
                         if not isinstance(records, list):
                             raise ValueError('Oura returned an unexpected summary format.')
@@ -149,6 +196,10 @@ class OuraSync:
                 latest = self.secrets.read()
                 latest['last_sync'] = datetime.now(timezone.utc).isoformat()
                 latest['sleep_details_imported'] = True
+                latest['optional_unavailable'] = unavailable
+                if history:
+                    latest['history_imported_at'] = latest['last_sync']
+                    self.history_progress = {'collection': 'complete', 'records': count}
                 self.secrets.write(latest)
                 self.error = None
                 return count

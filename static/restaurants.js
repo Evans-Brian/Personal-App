@@ -66,8 +66,8 @@
   }
   function render(){const list=$('restaurant-list');list.replaceChildren();if(!rows.length)list.append(node('p','No restaurants yet. Add one to start your list.','small'));for(const item of rows)list.append(card(item,true));}
   function navigate(){
-    const page=['restaurants','people','bjj'].includes(location.hash.slice(1))?location.hash.slice(1):'journal';
-    for(const name of ['journal','restaurants','people','bjj']){
+    const page=['restaurants','people','bjj','sleep'].includes(location.hash.slice(1))?location.hash.slice(1):'journal';
+    for(const name of ['journal','restaurants','people','bjj','sleep']){
       $(name+'-page').hidden=name!==page;const link=$('nav-'+name);
       if(name===page)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
     }

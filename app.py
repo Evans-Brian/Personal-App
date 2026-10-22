@@ -12,6 +12,7 @@ from restaurants import Restaurants
 from people import People
 from oura import OuraStore
 from oura_sync import OuraSync
+from sleep_analysis import analyze as analyze_sleep
 from bjj import BJJLibrary
 
 ROOT = Path(__file__).resolve().parent
@@ -185,6 +186,9 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     day = parse_qs(url.query).get('date', [''])[0]
                     journal.path(day)
                     return self.respond(200, {'records': oura.read_range(day, day)})
+                if url.path == '/api/oura/sleep-analysis':
+                    query = parse_qs(url.query)
+                    return self.respond(200, analyze_sleep(oura, journal, query.get('start', [None])[0], query.get('end', [None])[0]))
                 if url.path == '/api/oura/callback':
                     query = parse_qs(url.query)
                     cookies = SimpleCookie(self.headers.get('Cookie', ''))
@@ -195,6 +199,8 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                 assets = {"/people.js": ("people.js", "text/javascript"), "/restaurants.js": ("restaurants.js", "text/javascript"), "/plans.js": ("plans.js", "text/javascript"), "/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
                 assets["/voice.js"] = ("voice.js", "text/javascript")
                 assets["/bjj.js"] = ("bjj.js", "text/javascript")
+                assets["/sleep.js"] = ("sleep.js", "text/javascript")
+                assets["/sleep.css"] = ("sleep.css", "text/css")
                 assets.update({f"/icon-{size}.png": (f"icon-{size}.png", "image/png") for size in (180,192,512)})
                 assets["/manifest.webmanifest"] = ("manifest.webmanifest", "application/manifest+json")
                 if url.path in assets:
@@ -225,7 +231,7 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(503, {'error': 'Local transcription could not finish. Try recording again.'})
             if not self.allowed() or self.headers.get("Content-Type") != "application/json":
                 return self.respond(403, {"error": "Only same-origin JSON requests are accepted."})
-            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/disconnect', '/api/bjj/note', '/api/bjj/training', '/api/bjj/ai-credentials'):
+            if self.path not in ('/api/people', '/api/restaurants', '/api/entry', '/api/oura/setup', '/api/oura/connect', '/api/oura/sync', '/api/oura/history', '/api/oura/disconnect', '/api/bjj/note', '/api/bjj/training', '/api/bjj/ai-credentials'):
                 return self.respond(404, {"error": "Not found"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -253,6 +259,9 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None):
                     return self.respond(200, {'url': sync.begin()})
                 if self.path == '/api/oura/sync':
                     return self.respond(200, {'imported': sync.sync()})
+                if self.path == '/api/oura/history':
+                    started = sync.start_history()
+                    return self.respond(202, {'started': started, **sync.status()})
                 if self.path == '/api/oura/disconnect':
                     sync.disconnect()
                     return self.respond(200, sync.status())
