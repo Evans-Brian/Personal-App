@@ -20,6 +20,31 @@ def sleep(**overrides):
 
 
 class SleepAnalysisTests(unittest.TestCase):
+    def test_manual_illustrative_stages_preserve_times_not_measured_stage_totals(self):
+        record=sleep(data_source='manual',stages_estimated=True,latency=None,
+                     deep_sleep_duration=600,light_sleep_duration=1560,rem_sleep_duration=0)
+        value=session(record)
+        self.assertEqual(value['data_source'],'manual')
+        self.assertTrue(value['stages_estimated'])
+        self.assertEqual(value['asleep_minutes'],36)
+        self.assertEqual(value['waso_minutes'],20)
+        self.assertEqual(value['onset_source'],'self-reported times; illustrative stages')
+        self.assertTrue(value['stages'])
+        for key in ('deep_minutes','light_minutes','rem_minutes','heart_rate','hrv','latency_minutes'):
+            self.assertIsNone(value[key],key)
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            store.import_records('sleep',[record])
+            store.import_records('daily_sleep',[{'id':'summary','day':record['day'],'score':80}])
+            store.import_records('daily_readiness',[{'id':'readiness','day':record['day'],'temperature_deviation':.2}])
+            store.import_records('daily_spo2',[{'id':'oxygen','day':record['day'],'spo2_percentage':{'average':97}}])
+            result=analyze(store,start=record['day'],end=record['day'])
+            night=result['nights'][0]
+            for key in ('sleep_score','temperature_deviation','spo2'):
+                self.assertIsNone(night[key],key)
+            self.assertEqual(result['summary']['deep_minutes']['n'],0)
+            self.assertEqual(result['summary']['asleep_minutes']['mean'],36)
+
     def test_caffeine_intake_distinguishes_times_none_unknown_and_legacy(self):
         for intake, after in [('00:00',False),('08:45',False),('15:00',False),('16:00',False),('16:01',True),('17:00',True),('19:00',True),('23:59',True),('none',False),(None,None),('25:00',None),('7 p.m.',None),('17:00\n',None),(1700,None)]:
             with self.subTest(intake=intake):

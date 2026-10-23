@@ -68,6 +68,15 @@ def session(record):
               'stage_resolution_seconds': None, 'stage_coverage': None, 'stages': [], 'awakenings': [], 'disrupted_windows': [],
               'samples': {key: record.get(key) for key in ('heart_rate', 'hrv')},
               'movement_30_sec': record.get('movement_30_sec'), 'onset_source': None}
+    if result['stages_estimated']:
+        # Illustrative colors are not measured stage durations or trend samples.
+        for key in ('deep_minutes', 'rem_minutes', 'light_minutes'):
+            result[key] = None
+    if result['data_source'] == 'manual':
+        for key in ('hrv', 'heart_rate', 'lowest_heart_rate', 'breathing_rate', 'restless_periods', 'efficiency'):
+            result[key] = None
+        result['samples'] = {'heart_rate': None, 'hrv': None}
+        result['movement_30_sec'] = None
     # Prefer the highest resolution supplied by the API, never infer stages from HR.
     phases, interval = '', 0
     for key, seconds in [('sleep_phase_30_sec', 30), ('sleep_phase_5_min', 300)]:
@@ -239,6 +248,9 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
         summary = by_kind.get('daily_sleep', {}).get(day, {})
         readiness = by_kind.get('daily_readiness', {}).get(day, {})
         spo2 = by_kind.get('daily_spo2', {}).get(day, {})
+        if night['data_source'] == 'manual':
+            # A daily summary must not imply a score or physiology for a ring-free night.
+            summary, readiness, spo2 = {}, {}, {}
         night.update(sleep_score=summary.get('score'), contributors=summary.get('contributors', {}),
                      readiness_score=readiness.get('score'), temperature_deviation=readiness.get('temperature_deviation'),
                      spo2=(spo2.get('spo2_percentage') or {}).get('average'),
