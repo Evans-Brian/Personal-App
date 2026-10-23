@@ -76,6 +76,18 @@
   });
   $('bjj-note-form').addEventListener('submit',async event=>{event.preventDefault();if(!current)return;const video=$('bjj-video'),status=$('bjj-note-status');status.textContent='Saving…';try{const data=await request('/api/bjj/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_id:current.item.id,timestamp:video.currentTime,excerpt:$('bjj-note-excerpt').textContent,text:$('bjj-note-text').value,tags:$('bjj-note-tags').value.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)})});$('bjj-note-text').value='';status.textContent=`Saved to ${data.path}.`;loadNotes();}catch(error){status.textContent=error.message;}});
   const trainingForm=$('bjj-training-form'),trainingDate=$('bjj-training-date');
+  const trainingTextareas=[...trainingForm.querySelectorAll('textarea')];
+  function resizeTrainingTextareas(){
+    for(const field of trainingTextareas){
+      field.style.overflowY='hidden';
+      field.style.resize='none';
+      field.style.height='auto';
+      field.style.height=`${field.scrollHeight}px`;
+    }
+  }
+  trainingForm.addEventListener('input',event=>{
+    if(event.target.matches('textarea'))resizeTrainingTextareas();
+  });
   const trainingValues=()=>JSON.stringify(Object.fromEntries(new FormData(trainingForm)));
   const trainingDirty=()=>trainingForm.dataset.loadedValues!==undefined&&trainingValues()!==trainingForm.dataset.loadedValues;
   let loadedTrainingDate='',trainingLoadToken=0;
@@ -85,6 +97,7 @@
       const data=await request(`/api/bjj/training?date=${encodeURIComponent(day)}`);
       if(token!==trainingLoadToken)return;
       for(const input of trainingForm.querySelectorAll('[name]'))input.value=data[input.name]||'';
+      resizeTrainingTextareas();
       trainingForm.dataset.revision=data.revision||'';
       trainingForm.dataset.loadedValues=trainingValues();
       loadedTrainingDate=day;
