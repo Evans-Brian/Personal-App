@@ -60,6 +60,8 @@ def session(record):
               'restless_periods': number(record.get('restless_periods')),
               'low_battery': record.get('low_battery_alert') is True,
               'algorithm': record.get('sleep_algorithm_version'),
+              'data_source': record.get('data_source', 'oura'),
+              'stages_estimated': record.get('stages_estimated') is True,
               'offset_changed': start.utcoffset() != end.utcoffset(),
               'onset': None, 'final_wake': None, 'waso_minutes': None,
               'longest_wake_minutes': None, 'awakenings_5m': None,
@@ -94,7 +96,7 @@ def session(record):
                 onset, final = asleep[0]['start_seconds'], asleep[-1]['end_seconds']
                 result['onset'] = (start + timedelta(seconds=onset)).isoformat()
                 result['final_wake'] = (start + timedelta(seconds=final)).isoformat()
-                result['onset_source'] = 'sleep stages'
+                result['onset_source'] = 'self-reported times; illustrative stages' if result['stages_estimated'] else 'sleep stages'
                 wakes = [run for run in runs if run['stage'] == '4' and run['start_seconds'] >= onset and run['end_seconds'] <= final]
                 result['waso_minutes'] = round(sum(run['end_seconds'] - run['start_seconds'] for run in wakes) / 60, 2)
                 result['longest_wake_minutes'] = round(max((run['end_seconds'] - run['start_seconds'] for run in wakes), default=0) / 60, 2)
