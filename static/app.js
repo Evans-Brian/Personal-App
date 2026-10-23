@@ -575,75 +575,63 @@ function renderTrends(entries){
   }
 }
 el('history').parentElement.addEventListener('toggle',()=>{if(el('history').parentElement.open)loadHistory();});
+function renderOuraScores(records,day){
+  el('oura-day').textContent=new Date(day+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});el('oura-day').title=day;
+  el('oura-stats').replaceChildren();
+  for(const [kind,label] of [['daily_sleep','Sleep'],['daily_readiness','Readiness'],['daily_activity','Activity']]){
+    const score=records.find(record=>record.kind===kind)?.data?.score,known=typeof score==='number' && Number.isFinite(score) && score>=0 && score<=100;
+    const card=document.createElement('div');card.className='oura-score';card.setAttribute('role','group');card.setAttribute('aria-label',`${label}: ${known?score+' out of 100':'no score'} for ${day}`);card.title=card.getAttribute('aria-label');
+    const title=document.createElement('span');title.textContent=label;
+    const value=document.createElement('strong');value.textContent=known?String(score):'—';card.append(title,value);el('oura-stats').append(card);
+  }
+}
+function ouraMessage(message='',error=false){el('oura-status').textContent=message;el('oura-status').hidden=!message;el('oura-status').className=error?'error':'';}
 async function loadOuraDay(){
   const day=el('date').value;
   try{
     const data=await request(`/api/oura/day?date=${encodeURIComponent(day)}`);
     if(day!==el('date').value)return;
-    el('oura-stats').replaceChildren();
-    for(const [kind,label] of [['daily_sleep','Sleep'],['daily_readiness','Readiness'],['daily_activity','Activity']]){
-      const record=data.records.find(r=>r.kind===kind)?.data;
-      const card=document.createElement('div');card.className='stat';
-      const title=document.createElement('span');title.textContent=label;
-      const value=document.createElement('strong');value.textContent=record?.score!=null?`${record.score} / 100`:'—';
-      const detail=document.createElement('small');detail.textContent=record?(kind==='daily_activity' && record.steps!=null?`${record.steps.toLocaleString()} steps`:`${day}`):`No summary for ${day}`;
-      card.append(title,value,detail);el('oura-stats').append(card);
-    }
-    const sleeps=data.records.filter(r=>r.kind==='sleep').map(r=>r.data).sort((a,b)=>(a.bedtime_start || '').localeCompare(b.bedtime_start || ''));
-    const detailPanel=el('oura-sleep-details');detailPanel.replaceChildren();
-    if(!sleeps.length){detailPanel.textContent='No detailed sleep records for this date.';return;}
-    const duration=seconds=>typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0?`${Math.floor(Math.round(seconds/60)/60)}h ${Math.round(seconds/60)%60}m`:'—';
-    const metric=(value,unit)=>typeof value==='number' && Number.isFinite(value)?`${value.toLocaleString(undefined,{maximumFractionDigits:1})} ${unit}`:'—';
-    const clock=value=>typeof value==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)?`${value.slice(0,10)} ${value.slice(11,16)}`:'—';
-    for(const sleep of sleeps){
-      const section=document.createElement('section');section.className='sleep-record';
-      const title=document.createElement('h3');title.textContent=sleep.type==='long_sleep'?'Main sleep':sleep.type==='late_nap'?'Nap':sleep.type==='rest'?'Rest':'Sleep period';
-      const timing=document.createElement('p');timing.className='small';timing.textContent=`${clock(sleep.bedtime_start)} → ${clock(sleep.bedtime_end)} · Recorded local times`;
-      const grid=document.createElement('div');grid.className='sleep-metrics';
-      for(const [label,value] of [
-        ['Time asleep',duration(sleep.total_sleep_duration)],['Time in bed',duration(sleep.time_in_bed)],
-        ['Average HRV',metric(sleep.average_hrv,'ms')],['Lowest sleeping heart rate',metric(sleep.lowest_heart_rate,'bpm')],
-        ['Average sleeping heart rate',metric(sleep.average_heart_rate,'bpm')],['Sleep efficiency',metric(sleep.efficiency,'%')],
-        ['Deep sleep',duration(sleep.deep_sleep_duration)],['REM sleep',duration(sleep.rem_sleep_duration)],
-        ['Light sleep',duration(sleep.light_sleep_duration)],['Awake',duration(sleep.awake_time)],
-        ['Time to fall asleep',duration(sleep.latency)],['Breathing rate',metric(sleep.average_breath,'/ min')]
-      ]){const box=document.createElement('div');const name=document.createElement('span');name.textContent=label;const val=document.createElement('strong');val.textContent=value;box.append(name,val);grid.append(box);}
-      section.append(title,timing,grid);detailPanel.append(section);
-    }
-  }catch(error){el('oura-stats').textContent=error.message;}
+    renderOuraScores(data.records,day);
+  }catch(error){if(day===el('date').value)el('oura-stats').textContent=error.message;}
 }
 async function ouraStatus(){
   const state=await request('/api/oura/status');
   el('oura-redirect').textContent=state.redirect_uri;
   el('oura-connect').textContent=state.connected?'Reconnect Oura':'Connect Oura';
-  el('oura-sync').disabled=!state.connected || state.syncing;
+  el('oura-sync').disabled=!state.connected || state.syncing || state.history_running;
+  el('oura-sync').textContent=state.syncing?'Syncing…':'Sync';
+  el('oura-sync').title=state.last_sync?`Last synced ${new Date(state.last_sync).toLocaleString()}. Sync Oura now.`:'Sync Oura now';
   el('oura-disconnect').hidden=!state.connected;
-  el('oura-status').textContent=state.error || (state.history_running?`Importing Oura history: ${state.history_progress?.collection || 'starting'} · ${state.history_progress?.records || 0} records.`:state.connected?(state.last_sync?`Last synced ${new Date(state.last_sync).toLocaleString()}. Checks hourly while the app is running. Open Sleep for full history and trends.`:'Connected. The first sync will import the past 90 days.'):'Connect your Oura account to import sleep, readiness, and activity.');
+  el('oura-connection-status').textContent=state.connected?(state.last_sync?`Last synced ${new Date(state.last_sync).toLocaleString()}. Checks hourly while the app is running.`:'Connected. The first sync imports the past 90 days.'):'Connect Oura to import your scores. Previously imported data stays available.';
+  ouraMessage(state.error || (state.history_running?'Importing history…':state.syncing?'Syncing…':!state.connected?'Not connected. Open Settings to connect.':''),Boolean(state.error));
   return state;
 }
 const post=(url,data={})=>request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 el('oura-form').addEventListener('submit',async event=>{
   event.preventDefault();
-  try{await post('/api/oura/setup',{client_id:el('oura-client-id').value,client_secret:el('oura-client-secret').value});el('oura-client-secret').value='';await ouraStatus();el('oura-status').textContent='Settings saved. Click Connect Oura to authorize your account.';}
-  catch(error){el('oura-status').textContent=error.message;}
+  try{await post('/api/oura/setup',{client_id:el('oura-client-id').value,client_secret:el('oura-client-secret').value});el('oura-client-secret').value='';await ouraStatus();ouraMessage('Settings saved. Click Connect Oura to authorize.');}
+  catch(error){ouraMessage(error.message,true);}
 });
 el('oura-connect').addEventListener('click',async()=>{
   if(!mayLeave())return;
   try{const state=await ouraStatus();if(!state.configured){el('oura-setup').open=true;el('oura-client-id').focus();return;}const result=await post('/api/oura/connect');window.location.assign(result.url);}
-  catch(error){el('oura-status').textContent=error.message;}
+  catch(error){ouraMessage(error.message,true);}
 });
 el('oura-sync').addEventListener('click',async()=>{
-  el('oura-sync').disabled=true;el('oura-status').textContent='Fetching Oura summaries…';
-  try{const result=await post('/api/oura/sync');await ouraStatus();await loadOuraDay();el('oura-status').textContent+=` Imported or refreshed ${result.imported} summaries.`;}
-  catch(error){el('oura-status').textContent=error.message;}
-  finally{el('oura-sync').disabled=false;}
+  el('oura-sync').disabled=true;el('oura-sync').textContent='Syncing…';ouraMessage('Syncing…');
+  let state=null;
+  try{await post('/api/oura/sync');state=await ouraStatus();await loadOuraDay();ouraMessage('Synced.');}
+  catch(error){ouraMessage(error.message,true);}
+  finally{el('oura-sync').textContent='Sync';el('oura-sync').disabled=state?(!state.connected || state.syncing || state.history_running):false;}
 });
 el('oura-disconnect').addEventListener('click',async()=>{
-  try{await post('/api/oura/disconnect');await ouraStatus();}catch(error){el('oura-status').textContent=error.message;}
+  try{await post('/api/oura/disconnect');await ouraStatus();}catch(error){ouraMessage(error.message,true);}
 });
+document.addEventListener('click',event=>{const tools=el('oura-tools');if(tools.open && !tools.contains(event.target))tools.open=false;});
+el('oura-tools').addEventListener('keydown',event=>{if(event.key==='Escape' && el('oura-tools').open){event.preventDefault();el('oura-tools').open=false;el('oura-tools').querySelector('summary').focus();}});
 setInterval(()=>{if(!document.hidden && vaultId){ouraStatus().then(state=>{if(state.connected)loadOuraDay();}).catch(()=>{});}},60000);
 window.addEventListener('focus',()=>{if(vaultId){loadHistory();ouraStatus().then(()=>loadOuraDay()).catch(()=>{});}});
-request('/api/config').then(async config=>{vaultId=config.vault;el('vault').textContent=`Vault: ${config.vault}`;await load();loadHistory();ouraStatus().catch(error=>el('oura-status').textContent=error.message);}).catch(error=>status(error.message,true));
+request('/api/config').then(async config=>{vaultId=config.vault;el('vault').textContent=`Vault: ${config.vault}`;await load();loadHistory();ouraStatus().catch(error=>ouraMessage(error.message,true));}).catch(error=>status(error.message,true));
 
 
 

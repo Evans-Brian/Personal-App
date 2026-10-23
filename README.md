@@ -79,6 +79,8 @@ Oura connects through an existing developer app requesting `daily` and `spo2` ac
 
 After authorization the background worker imports the past 90 days, then checks hourly and refreshes the past 30 days. It resumes checking after startup/wake. Sync now triggers an immediate check. API failures appear in connection status; existing imported records remain available. Activity for today may still be incomplete. Sync the ring with the Oura phone app to make current data available to Oura's API.
 
+The Journal shows a compact Oura row: the selected date and its Sleep, Readiness and Activity scores, with small Sync and Settings controls. Missing scores remain dashes, not zero or readings borrowed from another date. Settings contains connection status, last-sync details, reconnect/disconnect and the developer-app form. Errors and syncing progress remain visible without opening Settings. Detailed sleep periods, HRV and heart-rate breakdowns live in the Sleep dashboard, not duplicated in Journal.
+
 The panel shows daily sleep, readiness, and activity scores plus steps for the selected journal date. Missing values display a dash rather than zero. Raw daily summaries are stored in SQLite by `(kind, id)`, with date and import timestamp, so repeat imports update instead of duplicating records. Disconnect deletes local tokens and stops future fetches, retaining imported history; revoke authorization in your Oura account if desired. Detailed sleep periods are also imported, including sleep duration, stages, efficiency, bedtime/wake time, average HRV, lowest and average sleeping heart rate, and breathing rate. The expandable sleep panel shows each period separately on its Oura-assigned day, using recorded local times. Durations are converted from seconds and rounded to minutes; missing readings stay blank rather than becoming zero. Raw sleep payloads remain in SQLite for later queries. Continuous daytime heart-rate data is not fetched. Existing connections get a one-time 90-day sleep backfill, followed by the normal 30-day refresh window.
 
 The private BJJ search index never includes personal journal text or Oura data. A future answer-generation feature should show exactly which BJJ passages would be supplied and require an explicit send action before any cloud-model integration.
@@ -148,6 +150,7 @@ node --check static/voice.js
 node --check static/sleep.js
 node tests/test_sleep_charts.cjs
 node tests/test_caffeine.cjs
+node tests/test_oura_summary.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
