@@ -12,6 +12,14 @@ class BJJPlayerUITests(unittest.TestCase):
     def test_fast_forward_can_be_set_to_one_point_seven_five(self):
         self.assertIn('<option value="1.75">1.75×</option>', HTML)
 
+    def test_compact_bjj_sections_and_filters(self):
+        self.assertNotIn('id="bjj-transcript"', HTML)
+        self.assertNotIn('id="bjj-filter-chapter"', HTML)
+        self.assertNotIn('id="bjj-history-query"', HTML)
+        self.assertNotIn('id="bjj-history-rating"', HTML)
+        self.assertIn('<details class="bjj-note-collapse">', HTML)
+        self.assertIn('<details class="card bjj-notes">', HTML)
+
 
 if __name__ == "__main__":
     unittest.main()

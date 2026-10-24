@@ -1,6 +1,6 @@
 (() => {
   const $=id=>document.getElementById(id), node=(tag,text,className)=>{const item=document.createElement(tag);if(text!=null)item.textContent=text;if(className)item.className=className;return item;};
-  let library=null,current=null,segments=[],active=-1,openToken=0;
+  let library=null,current=null,segments=[],openToken=0;
   const time=value=>`${Math.floor(Number(value||0)/60)}:${String(Math.floor(Number(value||0)%60)).padStart(2,'0')}`;
   const video=$('bjj-video'),holdRegion=$('bjj-speed-hold'),holdSpeed=$('bjj-hold-speed'),holdIndicator=$('bjj-speed-indicator');
   video.addEventListener('playing',()=>{$('bjj-video-status').textContent='';});
@@ -29,11 +29,28 @@
   async function request(url,options){const response=await fetch(url,options);let data;try{data=await response.json();}catch{data={error:'The BJJ service returned an invalid response.'};}if(!response.ok)throw Error(data.error||`Request failed (${response.status}).`);return data;}
   function message(text,error=false){$('bjj-status').textContent=text;$('bjj-status').className=error?'error':'';}
   function seek(seconds){const video=$('bjj-video');video.currentTime=Number(seconds)||0;video.play().catch(()=>{});$('bjj-player-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
-  function renderTranscript(){const panel=$('bjj-transcript');panel.replaceChildren();if(!segments.length){panel.append(node('p','Transcript is still being prepared.','small'));return;}for(const [index,segment] of segments.entries()){const row=node('button',null,'bjj-segment');row.type='button';row.dataset.index=index;row.dataset.start=segment.start_seconds;const stamp=node('time',time(segment.start_seconds));const text=node('span',segment.corrected_text||segment.raw_text||segment.text||'');row.append(stamp,text);row.addEventListener('click',()=>seek(segment.start_seconds));panel.append(row);}}
-  async function openVolume(course,item,seconds=0){if(!item.present){message('This volume has not been downloaded and validated yet.',true);return;}const token=++openToken;current={course,item};segments=[];active=-1;localStorage.setItem('bjj:last-media',item.id);$('bjj-player-panel').hidden=false;$('bjj-player-course').textContent=`${course.title} · ${course.instructor}`;$('bjj-player-title').textContent=`Volume ${item.volume}`;$('bjj-note-excerpt').textContent='';$('bjj-note-time').textContent=time(seconds);renderTranscript();const videoStatus=$('bjj-video-status');videoStatus.textContent='Loading video…';const video=$('bjj-video'),saved=Number(localStorage.getItem(`bjj:position:${item.id}`)||0),target=Number(seconds)||saved||0;let applied=false;const applyStart=()=>{if(applied||token!==openToken)return;applied=true;video.removeEventListener('loadedmetadata',applyStart);video.currentTime=Math.min(target,Math.max(0,video.duration-1));};video.addEventListener('loadedmetadata',applyStart,{once:true});video.src=`/api/bjj/media/${encodeURIComponent(item.id)}`;if(video.readyState>=1)applyStart();video.play().catch(error=>{if(token===openToken&&error.name!=='AbortError')videoStatus.textContent='Playback could not start. Tap the video’s play control or reopen this volume.';});
-    const transcript=await request(`/api/bjj/transcript?media_id=${encodeURIComponent(item.id)}`);if(token!==openToken)return;segments=transcript.segments||[];active=-1;renderTranscript();const chapters=$('bjj-chapters');chapters.replaceChildren(new Option('Start','0'));for(const chapter of transcript.chapters||[])chapters.append(new Option(chapter.title||chapter.id,String(chapter.start_seconds||0)));
+  async function openVolume(course,item,seconds=0){if(!item.present){message('This volume has not been downloaded and validated yet.',true);return;}const token=++openToken;current={course,item};segments=[];localStorage.setItem('bjj:last-media',item.id);$('bjj-player-panel').hidden=false;$('bjj-player-course').textContent=`${course.title} · ${course.instructor}`;$('bjj-player-title').textContent=`Volume ${item.volume}`;$('bjj-note-excerpt').textContent='';$('bjj-note-time').textContent=time(seconds);const videoStatus=$('bjj-video-status');videoStatus.textContent='Loading video…';const video=$('bjj-video'),saved=Number(localStorage.getItem(`bjj:position:${item.id}`)||0),target=Number(seconds)||saved||0;let applied=false;const applyStart=()=>{if(applied||token!==openToken)return;applied=true;video.removeEventListener('loadedmetadata',applyStart);video.currentTime=Math.min(target,Math.max(0,video.duration-1));};video.addEventListener('loadedmetadata',applyStart,{once:true});video.src=`/api/bjj/media/${encodeURIComponent(item.id)}`;if(video.readyState>=1)applyStart();video.play().catch(error=>{if(token===openToken&&error.name!=='AbortError')videoStatus.textContent='Playback could not start. Tap the video’s play control or reopen this volume.';});
+    const transcript=await request(`/api/bjj/transcript?media_id=${encodeURIComponent(item.id)}`);if(token!==openToken)return;segments=transcript.segments||[];const chapters=$('bjj-chapters');chapters.replaceChildren(new Option('Start','0'));for(const chapter of transcript.chapters||[])chapters.append(new Option(chapter.title||chapter.id,String(chapter.start_seconds||0)));
   }
-  function renderLibrary(){const panel=$('bjj-library');panel.replaceChildren();for(const course of library.courses){const card=node('section',null,'card bjj-course');const heading=node('div',null,'bjj-course-heading');const copy=node('div');copy.append(node('h2',course.title),node('p',`${course.instructor} · ${time(course.duration)} total`,'small'));const state=node('span',course.complete?'4 / 4 ready':`${course.volumes.filter(v=>v.present).length} / 4 ready`,'bjj-badge');heading.append(copy,state);card.append(heading);for(let volume=1;volume<=4;volume++){const item=course.volumes.find(value=>value.volume===volume)||{volume,present:false,transcribed:false};const row=node('div',null,'bjj-volume');const text=node('div');text.append(node('strong',`Volume ${volume}`),node('small',item.present?`${time(item.duration)} · ${item.transcribed?'Transcript ready':'Transcript pending'}`:'Not downloaded'));const button=node('button',item.present?(Number(localStorage.getItem(`bjj:position:${item.id}`)||0)>5?'Resume':'Play'):'Unavailable');button.disabled=!item.present;button.addEventListener('click',()=>openVolume(course,item));row.append(text,button);card.append(row);}panel.append(card);}}
+  function renderLibrary(){
+    const panel=$('bjj-library');panel.replaceChildren();
+    for(const course of library.courses){
+      const card=node('details',null,'card bjj-course'),heading=node('summary',null,'bjj-course-heading');
+      const copy=node('span',null,'bjj-course-copy');
+      copy.append(node('strong',course.title,'bjj-course-title'),node('span',`${course.instructor} · ${time(course.duration)} total`,'small'));
+      const state=node('span',course.complete?'4 / 4 ready':`${course.volumes.filter(v=>v.present).length} / 4 ready`,'bjj-badge');
+      heading.append(copy,state);card.append(heading);
+      for(let volume=1;volume<=4;volume++){
+        const item=course.volumes.find(value=>value.volume===volume)||{volume,present:false,transcribed:false};
+        const row=node('div',null,'bjj-volume'),label=node('div');
+        label.append(node('strong',`Volume ${volume}`),node('small',item.present?`${time(item.duration)} · ${item.transcribed?'Transcript ready':'Transcript pending'}`:'Not downloaded'));
+        const button=node('button',item.present?(Number(localStorage.getItem(`bjj:position:${item.id}`)||0)>5?'Resume':'Play'):'Unavailable');
+        button.disabled=!item.present;button.addEventListener('click',()=>openVolume(course,item));
+        row.append(label,button);card.append(row);
+      }
+      panel.append(card);
+    }
+  }
   async function load(){try{library=await request('/api/bjj/library');renderLibrary();const select=$('bjj-filter-course');for(const course of library.courses)select.append(new Option(`${course.title} — ${course.instructor}`,course.id));loadNotes();message(library.courses.some(course=>course.complete)?'Your private library is ready.':'Library setup is in progress. Available volumes can be played now.');}catch(error){message(error.message,true);}}
   async function loadAIStatus(){
     const panel=$('bjj-ai-setup'),status=$('bjj-ai-status');
@@ -45,7 +62,7 @@
     try{const data=await request('/api/bjj/ai-credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))});form.reset();status.textContent=`Saved. TypeSafe: ${data.typesafe_configured?'configured':'not configured'}`;}catch(error){status.textContent=error.message;}
   });
   async function loadNotes(){const list=$('bjj-notes-list');try{const data=await request('/api/bjj/notes');list.replaceChildren();if(!data.notes.length){list.append(node('p','No notes saved yet.','small'));return;}for(const note of data.notes){const button=node('button',null,'bjj-result');button.type='button';button.append(node('strong',`${note.title} · ${time(note.timestamp)}`),node('span',note.path));button.addEventListener('click',()=>{const course=library.courses.find(c=>c.volumes.some(v=>v.id===note.media_id)),item=course?.volumes.find(v=>v.id===note.media_id);if(course&&item)openVolume(course,item,note.timestamp);});list.append(button);}}catch(error){list.textContent=error.message;}}
-  video.addEventListener('timeupdate',()=>{if(!current)return;localStorage.setItem(`bjj:position:${current.item.id}`,String(video.currentTime));$('bjj-note-time').textContent=time(video.currentTime);let index=segments.findIndex(segment=>video.currentTime>=segment.start_seconds&&video.currentTime<segment.end_seconds);if(index!==active){document.querySelector(`.bjj-segment[data-index="${active}"]`)?.classList.remove('active');active=index;const row=document.querySelector(`.bjj-segment[data-index="${active}"]`);row?.classList.add('active');if(row && !row.matches(':hover,:focus'))row.scrollIntoView({block:'nearest'});$('bjj-note-excerpt').textContent=index>=0?(segments[index].corrected_text||segments[index].raw_text||''):'';}});
+  video.addEventListener('timeupdate',()=>{if(!current)return;localStorage.setItem(`bjj:position:${current.item.id}`,String(video.currentTime));$('bjj-note-time').textContent=time(video.currentTime);const segment=segments.find(part=>video.currentTime>=part.start_seconds&&video.currentTime<part.end_seconds);$('bjj-note-excerpt').textContent=segment?.corrected_text||segment?.raw_text||'';});
   for(const name of ['pause','ended','emptied'])video.addEventListener(name,()=>finishSpeedHold());
   $('bjj-chapters').addEventListener('change',event=>seek(event.target.value));
   function searchResultButton(result){
@@ -64,7 +81,7 @@
     try{
       const params=new URLSearchParams({q:$('bjj-query').value,source:$('bjj-search-source').value,limit:'15'});
       if($('bjj-search-mode').value==='semantic')params.set('semantic','1');
-      for(const [field,id] of [['course','bjj-filter-course'],['volume','bjj-filter-volume'],['chapter','bjj-filter-chapter']])if($(id).value)params.set(field,$(id).value);
+      for(const [field,id] of [['course','bjj-filter-course'],['volume','bjj-filter-volume']])if($(id).value)params.set(field,$(id).value);
       const data=await request(`/api/bjj/search?${params}`);results.replaceChildren();
       if(!data.results.length){results.append(node('p','No matching passages.','small'));return;}
       for(const result of data.results.slice(0,5))results.append(searchResultButton(result));
@@ -121,23 +138,35 @@
   loadTraining();
 
   const historyList=$('bjj-history-list'),historyDetail=$('bjj-history-detail');
-  let historyEntries=[],historyTotal=0,historySelected='',historyRequestToken=0,historyDetailToken=0,historySearchTimer;
+  let historyEntries=[],historyTotal=0,historySelected='',historyRequestToken=0,historyDetailToken=0;
+  const historyMonthOpen=new Map();
+  const now=new Date(),currentMonthKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const displayDate=day=>new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
   const detailDate=day=>new Intl.DateTimeFormat('en-US',{month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
   const monthLabel=day=>new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date(`${day}T12:00:00`));
   function renderHistoryList(){
     historyList.replaceChildren();
-    if(!historyEntries.length){historyList.append(node('p',$('bjj-history-query').value||$('bjj-history-rating').value?'No sessions match these filters.':'No training sessions saved yet.','small'));return;}
-    let month='';
+    if(!historyEntries.length){historyList.append(node('p','No training sessions saved yet.','small'));return;}
+    const months=new Map();
     for(const entry of historyEntries){
-      const group=monthLabel(entry.date);
-      if(group!==month){historyList.append(node('h3',group,'bjj-history-month'));month=group;}
-      const button=node('button',null,'bjj-history-row');button.type='button';button.dataset.date=entry.date;button.setAttribute('aria-pressed',String(entry.date===historySelected));
-      const date=node('span',null,'bjj-history-date');date.append(node('strong',String(Number(entry.date.slice(-2)))),node('small',new Intl.DateTimeFormat('en-US',{weekday:'short'}).format(new Date(`${entry.date}T12:00:00`))));
-      const copy=node('span',null,'bjj-history-row-copy');copy.append(node('strong',displayDate(entry.date)),node('span',entry.preview));
-      if(entry.rating)copy.append(node('small',`Session rating ${entry.rating}/5`,'bjj-history-rating'));
-      button.append(date,copy);
-      button.addEventListener('click',()=>showHistoryDetail(entry.date,true));historyList.append(button);
+      const key=entry.date.slice(0,7);
+      if(!months.has(key))months.set(key,[]);
+      months.get(key).push(entry);
+    }
+    for(const [key,entries] of months){
+      const group=node('details',null,'bjj-history-month-group');
+      group.open=historyMonthOpen.get(key)??key===currentMonthKey;
+      group.addEventListener('toggle',()=>historyMonthOpen.set(key,group.open));
+      group.append(node('summary',monthLabel(entries[0].date),'bjj-history-month'));
+      for(const entry of entries){
+        const button=node('button',null,'bjj-history-row');button.type='button';button.dataset.date=entry.date;button.setAttribute('aria-pressed',String(entry.date===historySelected));
+        const date=node('span',null,'bjj-history-date');date.append(node('strong',String(Number(entry.date.slice(-2)))),node('small',new Intl.DateTimeFormat('en-US',{weekday:'short'}).format(new Date(`${entry.date}T12:00:00`))));
+        const copy=node('span',null,'bjj-history-row-copy');copy.append(node('strong',displayDate(entry.date)),node('span',entry.preview));
+        if(entry.rating)copy.append(node('small',`Session rating ${entry.rating}/5`,'bjj-history-rating'));
+        button.append(date,copy);
+        button.addEventListener('click',()=>showHistoryDetail(entry.date,true));group.append(button);
+      }
+      historyList.append(group);
     }
   }
   async function showHistoryDetail(day,scroll=false){
@@ -166,7 +195,7 @@
   async function loadTrainingHistory(reset=true){
     const token=++historyRequestToken,status=$('bjj-history-status');
     if(reset)historyDetailToken++;
-    const params=new URLSearchParams({q:$('bjj-history-query').value.trim(),rating:$('bjj-history-rating').value,limit:'20',offset:String(reset?0:historyEntries.length)});
+    const params=new URLSearchParams({limit:'20',offset:String(reset?0:historyEntries.length)});
     status.textContent='Loading sessions…';
     try{
       const data=await request(`/api/bjj/training-history?${params}`);
@@ -176,15 +205,13 @@
       $('bjj-history-count').textContent=`${historyTotal} ${historyTotal===1?'session':'sessions'}`;
       $('bjj-history-more').hidden=historyEntries.length>=historyTotal;
       status.textContent='';
-      if(reset&&!historyEntries.some(entry=>entry.date===historySelected))historySelected=historyEntries[0]?.date||'';
+      if(reset&&!historyEntries.some(entry=>entry.date===historySelected))historySelected=historyEntries.find(entry=>entry.date.startsWith(currentMonthKey))?.date||'';
       renderHistoryList();
       if(historySelected&&reset)showHistoryDetail(historySelected);
-      if(!historySelected)historyDetail.replaceChildren(node('p',historyTotal?'Select a session to read it here.':$('bjj-history-query').value||$('bjj-history-rating').value?'Try another search or rating to find a session.':'Saved training sessions will appear here.','small'));
+      if(!historySelected)historyDetail.replaceChildren(node('p',historyTotal?'Open a month and select a session to read it here.':'Saved training sessions will appear here.','small'));
     }catch(error){if(token===historyRequestToken)status.textContent=error.message;}
   }
   $('bjj-history-jump').addEventListener('click',()=>$('bjj-past-sessions').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
-  $('bjj-history-query').addEventListener('input',()=>{clearTimeout(historySearchTimer);historySearchTimer=setTimeout(()=>loadTrainingHistory(),250);});
-  $('bjj-history-rating').addEventListener('change',()=>loadTrainingHistory());
   $('bjj-history-more').addEventListener('click',()=>loadTrainingHistory(false));
   trainingForm.addEventListener('submit',async event=>{
     event.preventDefault();const status=$('bjj-training-status'),data=Object.fromEntries(new FormData(trainingForm));
