@@ -18,6 +18,22 @@ class TaskHistoryTests(unittest.TestCase):
     def morning(self, task, choices=None, optional=False):
         return '<!-- carry-review: '+quote(json.dumps(choices or {}))+' -->\n### '+('Secondary Tasks' if optional else 'Priority Tasks')+'\n\n- '+task+'\n'
 
+    def test_handled_carry_actions_preserve_history_and_only_due_skips_return(self):
+        tasks=['Finished','Priority move','Secondary move','Tomorrow','Next week','Dismissed']
+        old=self.save('2026-09-15','morning',self.morning('\n- '.join(tasks)))
+        actions=['Completed','Added to Priority Tasks','Added to Secondary Tasks','Skipped today','Skipped until 2026-09-23','Deleted']
+        choices={'2026-09-15:'+task:action for task,action in zip(tasks,actions)}
+        current=self.morning('Priority move',choices)+'\n### Secondary Tasks\n\n- Secondary move\n'
+        self.save('2026-09-16','morning',current)
+        self.assertEqual(self.j.read('2026-09-15')['revision'],old['revision'])
+        tomorrow=self.j.carryover('2026-09-17')['items']
+        self.assertCountEqual(tomorrow,['Priority move','[If time] Secondary move','Tomorrow'])
+        self.assertNotIn('Next week',self.j.carryover('2026-09-22')['items'])
+        self.assertIn('Next week',self.j.carryover('2026-09-23')['items'])
+        history=self.j.task_history()
+        self.assertEqual(len(history),1)
+        self.assertEqual((history[0]['text'],history[0]['completed']),('Finished','2026-09-16'))
+
     def test_lineage_across_categories_and_days_and_recurring_task(self):
         self.save('2026-09-15','morning',self.morning('Read'))
         self.save('2026-09-16','morning',self.morning('Read',{'2026-09-15:Read':'Added to Secondary Tasks'},True))

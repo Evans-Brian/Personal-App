@@ -153,6 +153,7 @@ node --check static/restaurants.js
 node --check static/voice.js
 node --check static/sleep.js
 node tests/test_sleep_charts.cjs
+node tests/test_carryover.cjs
 node tests/test_caffeine.cjs
 node tests/test_oura_summary.cjs
 ```
@@ -177,6 +178,8 @@ Morning also offers Secondary Tasks for lower-priority items to tackle after the
 Secondary Tasks starts with one field; **+ Add item** adds more without a four-item limit. Priority Tasks retains its four-item starting layout. Saved nonempty fields reappear on reload. Both lists remain in the evening checklist.
 
 Carry-forward review includes **Already done**. Tick it and save the morning entry to record completion on that journal date. Once added to today's plans, complete the item in the evening checklist. Carrying an unfinished item does not change the previous night's unchecked box.
+
+Carry-forward shows only pending decisions. Marking an item already done, dismissing it, skipping it, or adding it to Priority or Secondary Tasks immediately clears its review card. An item already present in today's plans is cleared without being duplicated or moved to a different category. The whole review hides when nothing remains. Save the morning entry to persist the decisions; browser drafts retain them too. This clears the review queue, not the original task or its history. Skipped items return when due, and unfinished tasks moved into today's plans can carry forward from today on a later day.
 
 **Completed tasks** shows creation and completion dates and is archived at `Tasks/Completed tasks.md` in the configured vault. Explicit carry decisions preserve the original date across days and categories; independently typed tasks are new tasks. For existing entries the creation date is the original journal date, not the file's modification timestamp. The archive is an audit history: previously saved completions remain if a checkbox is subsequently cleared or a note removed. Keep the app-managed metadata comment intact. Journal notes remain the editable source; archive updates run on save and when the task history loads. A failed archive update is reported without undoing a successful journal save.
 

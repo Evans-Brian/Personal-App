@@ -427,12 +427,13 @@ function revealPlan(prefix,focus=false){
 }
 function renderCarryover(){
   const panel=el('carryover');panel.replaceChildren();
-  if(!guided || period!=='morning' || !carryData.items.length)return;
+  if(!guided || period!=='morning')return;
+  const pending=(carryData.entries || (carryData.items || []).map(text=>({text,key:carryData.source+':'+text}))).filter(item=>!carryChoices[item.key]);
+  if(!pending.length)return;
   const title=document.createElement('h3');title.textContent='Carry forward?';panel.append(title);
-  const hint=document.createElement('p');hint.className='small';hint.textContent=`From ${carryData.source}${carryData.reviewed?' · not checked off':' · no saved evening checklist, so completion is unknown'}. Choose what belongs today. Nothing is added automatically.`;panel.append(hint);
-  for(const item of (carryData.entries || carryData.items.map(text=>({text,key:carryData.source+':'+text})))){
+  const hint=document.createElement('p');hint.className='small';hint.textContent=`From ${carryData.source}${carryData.reviewed?' · not checked off':' · no saved evening checklist, so completion is unknown'}. Choose what belongs today. Handled items leave this queue; save your morning entry to keep your choices.`;panel.append(hint);
+  for(const item of pending){
     const task=item.text, key=item.key, text=task.replace(/^\[If time\] /,'');
-    if(carryChoices[key]==='Deleted')continue;
     const row=document.createElement('div');row.className='carry-row';
     const label=document.createElement('p');label.textContent=text;row.append(label);
     if(!carryChoices[key]){
@@ -441,11 +442,10 @@ function renderCarryover(){
     }
     const doneLabel=document.createElement('label');doneLabel.className='plan-check';
     const done=document.createElement('input');done.type='checkbox';done.checked=carryChoices[key]==='Completed';
-    done.disabled=busy || String(carryChoices[key] || '').startsWith('Added');
+    done.disabled=busy;
     const doneText=document.createElement('span');doneText.textContent='Already done';doneLabel.append(done,doneText);row.append(doneLabel);
     done.addEventListener('change',()=>{if(busy)return;if(done.checked)carryChoices[key]='Completed';else delete carryChoices[key];changed();renderCarryover();});
-    if(carryChoices[key]){const result=document.createElement('span');result.textContent=String(carryChoices[key]).replace('Added to good-day plans','Added to Priority Tasks').replace('Added to if-time','Added to Secondary Tasks');row.append(result);}
-    else for(const [action,prefix] of [['Add to Priority Tasks','plan'],['Add to Secondary Tasks','optional'],['Skip today',null],['Skip for a week','week'],['Skip for n days','custom']]){
+    for(const [action,prefix] of [['Add to Priority Tasks','plan'],['Add to Secondary Tasks','optional'],['Skip today',null],['Skip for a week','week'],['Skip for n days','custom']]){
       let daysInput;
       if(prefix==='custom'){
         const label=document.createElement('label');label.textContent='Days to skip';
@@ -462,7 +462,12 @@ function renderCarryover(){
         }
         if(prefix){
           const all=[...document.querySelectorAll('.plan-input')];
-          if(all.some(field=>field.value.trim().toLowerCase()===text.toLowerCase())){status('That item is already in today’s plans.');return;}
+          const existing=all.find(field=>field.value.trim().toLowerCase()===text.toLowerCase());
+          if(existing){
+            const category=existing.id.startsWith('optional-')?'Secondary Tasks':'Priority Tasks';
+            carryChoices[key]='Added to '+category;changed();renderCarryover();
+            status(`Already in today’s ${category}. Cleared from carry-forward; save your morning entry to keep this choice.`);return;
+          }
           const slot=[...document.querySelectorAll(`[id^="${prefix}-"].plan-input`)].find(field=>!field.value.trim()) || revealPlan(prefix);
           slot.value=text;slot.hidden=false;
         }
