@@ -7,6 +7,7 @@
   const valid=value=>typeof value==='number' && Number.isFinite(value);
   const duration=value=>valid(value)?`${Math.floor(Math.round(value)/60)}h ${Math.round(value)%60}m`:'—';
   const mins=value=>valid(value)?`${Math.round(value)}m`:'—';
+  const awakeningNote=night=>night.awakening_timing_unknown?`${valid(night.waso_minutes)?'Self-reported awake time: '+mins(night.waso_minutes)+'. ':''}Exact awakening time is unknown; the awake position shown on the timeline is a guess and is excluded from hourly waking analysis.`:null;
   const metric=(value,unit='')=>valid(value)?`${Number(value.toFixed(1))}${unit}`:'—';
   const clock=value=>typeof value==='string'?clockNumber(Number(value.slice(11,13))*60+Number(value.slice(14,16))):'—';
   const clockNumber=value=>{if(!valid(value))return '—';const time=((Math.round(value)%1440)+1440)%1440,h=Math.floor(time/60);return `${h%12||12}:${String(time%60).padStart(2,'0')} ${h<12?'a.m.':'p.m.'}`;};
@@ -98,14 +99,17 @@
       const button=node('button',null,'sleep-night-row'),label=node('span',null,'sleep-night-label');
       const manual=night.data_source==='manual',total=duration(night.asleep_minutes);
       button.type='button';button.setAttribute('aria-pressed',String(night.id===selected));
-      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(night.asleep_minutes)?total+' asleep':'total sleep unknown'}${manual?'; manual entry':''}${night.stages_estimated?'; light, deep and REM stages are guesses':''}`);
+      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(night.asleep_minutes)?total+' asleep':'total sleep unknown'}${manual?'; manual entry':''}${night.stages_estimated?'; light, deep and REM stages are guesses':''}${night.awakening_timing_unknown?'; awakening clock time unknown':''}`);
       label.append(node('span',night.day.slice(5)),node('strong',total,'sleep-night-total'));
       if(manual||night.stages_estimated)label.append(node('small',manual?(night.stages_estimated?'Manual · guessed stages':'Manual entry'):'Guessed stages'));
+      if(night.awakening_timing_unknown)label.append(node('small','Wake time unknown'));
       button.append(label);
       const track=node('span',null,'sleep-track'),base=night.bedtime_clock;
       const runs=night.stages.length?night.stages:[{stage:'unknown',start_seconds:0,end_seconds:night.in_bed_minutes*60}];
       for(const run of runs){const start=base+run.start_seconds/60,end=base+run.end_seconds/60,clippedStart=Math.max(left,start),clippedEnd=Math.min(right,end);if(clippedEnd<=clippedStart)continue;
-        const stage={'1':'deep','2':'light','3':'rem','4':'awake'}[run.stage];const segment=node('span',null,'sleep-segment'+(stage?' stage-'+stage:''));segment.style.left=`${(clippedStart-left)/(right-left)*100}%`;segment.style.width=`${(clippedEnd-clippedStart)/(right-left)*100}%`;segment.title=`${night.day} · ${stage||'In bed; stages unavailable'}${night.stages_estimated&&stage&&stage!=='awake'?' (illustrative guess)':manual?' (self-reported)':''} · ${clockNumber(start)}–${clockNumber(end)}`;track.append(segment);
+        const stage={'1':'deep','2':'light','3':'rem','4':'awake'}[run.stage];
+        const provenance=stage==='awake'&&night.awakening_timing_unknown?' (illustrative placement; actual awakening time unknown)':night.stages_estimated&&stage&&stage!=='awake'?' (illustrative guess)':manual?' (self-reported)':'';
+        const segment=node('span',null,'sleep-segment'+(stage?' stage-'+stage:''));segment.style.left=`${(clippedStart-left)/(right-left)*100}%`;segment.style.width=`${(clippedEnd-clippedStart)/(right-left)*100}%`;segment.title=`${night.day} · ${stage||'In bed; stages unavailable'}${provenance} · ${clockNumber(start)}–${clockNumber(end)}`;track.append(segment);
       }
       button.append(track);button.addEventListener('click',()=>selectNight(night.id,true));inner.append(button);
     }
@@ -145,7 +149,9 @@
     const warnings=[];if(night.low_battery)warnings.push('Oura flagged a low battery.');if(night.offset_changed)warnings.push('The UTC offset changed during this session. Stage times retain the starting offset.');if(night.main_period_count>1)warnings.push('Multiple main-sleep sessions: nightly trends use the longest; other sessions are listed below.');if(!night.stages.length)warnings.push('Usable stages are missing. Awakening timings are unknown.');if(warnings.length)box.append(node('p',warnings.join(' '),'small'));
     box.append(node('h3','Overnight awakenings lasting at least five minutes'));
     const events=night.awakenings.filter(item=>item.minutes>=5);
-    if(!events.length)box.append(node('p',night.waso_minutes===null?'No usable sleep-stage series.':'No continuous awake interval of five minutes detected between first and last sleep.','small'));
+    const timingNote=awakeningNote(night);
+    if(timingNote)box.append(node('p',timingNote,'small'));
+    else if(!events.length)box.append(node('p',night.waso_minutes===null?'No usable sleep-stage series.':'No continuous awake interval of five minutes detected between first and last sleep.','small'));
     for(const event of events){const row=node('div',null,'sleep-event');row.append(node('strong',`${clock(event.start)}–${clock(event.end)}`),node('span',duration(event.minutes)));box.append(row);}
     const clusters=night.disrupted_windows.filter(item=>item.span_minutes>item.awake_minutes);
     if(clusters.length){box.append(node('h3','Long disrupted stretches with brief sleep between awakenings'));box.append(node('p','These group awake episodes separated by at most five minutes of detected sleep. The entire stretch is not counted as awake.','small'));for(const item of clusters){const row=node('div',null,'sleep-event');row.append(node('strong',`${clock(item.start)}–${clock(item.end)}`),node('span',`${mins(item.awake_minutes)} awake across ${mins(item.span_minutes)}`));box.append(row);}}

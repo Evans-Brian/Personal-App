@@ -20,6 +20,32 @@ def sleep(**overrides):
 
 
 class SleepAnalysisTests(unittest.TestCase):
+    def test_unknown_manual_awake_timing_preserves_reported_duration_not_hourly_placement(self):
+        record=sleep(data_source='manual',stages_estimated=True,awakening_timing_unknown=True,
+                     total_sleep_duration=2700,awake_time=900,latency=None,
+                     sleep_phase_30_sec='1'*60+'4'*30+'2'*30,
+                     reported_awakenings=[{'duration_seconds':900}])
+        value=session(record)
+        self.assertTrue(value['awakening_timing_unknown'])
+        self.assertEqual(value['waso_minutes'],15)
+        self.assertEqual(value['longest_wake_minutes'],15)
+        self.assertEqual(value['awakenings_5m'],1)
+        self.assertEqual(value['awakenings'],[])
+        self.assertEqual(value['disrupted_windows'],[])
+        self.assertTrue(value['stages'],'Illustrative colors remain available.')
+        unknown=session({**record,'reported_awakenings':None})
+        self.assertIsNone(unknown['waso_minutes'],'Do not substitute a guessed series for missing reports.')
+        with tempfile.TemporaryDirectory() as directory:
+            store=OuraStore(Path(directory)/'oura.sqlite3')
+            store.import_records('sleep',[record])
+            result=analyze(store,start=record['day'],end=record['day'])
+            self.assertEqual(result['summary']['waso_minutes']['mean'],15)
+            self.assertEqual(sum(hour['awake_minutes'] for hour in result['wake_hours']),0)
+            store.import_records('sleep',[sleep(id='measured',day='2026-10-23')])
+            result=analyze(store,start=record['day'],end='2026-10-23')
+            self.assertEqual(sum(hour['awake_minutes'] for hour in result['wake_hours']),20)
+            self.assertEqual(result['summary']['waso_minutes']['mean'],17.5)
+
     def test_manual_illustrative_stages_preserve_times_not_measured_stage_totals(self):
         record=sleep(data_source='manual',stages_estimated=True,latency=None,
                      deep_sleep_duration=600,light_sleep_duration=1560,rem_sleep_duration=0)

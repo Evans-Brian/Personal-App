@@ -62,6 +62,7 @@ def session(record):
               'algorithm': record.get('sleep_algorithm_version'),
               'data_source': record.get('data_source', 'oura'),
               'stages_estimated': record.get('stages_estimated') is True,
+              'awakening_timing_unknown': record.get('awakening_timing_unknown') is True,
               'offset_changed': start.utcoffset() != end.utcoffset(),
               'onset': None, 'final_wake': None, 'waso_minutes': None,
               'longest_wake_minutes': None, 'awakenings_5m': None,
@@ -125,6 +126,18 @@ def session(record):
                 result['disrupted_windows'] = [
                     {**cluster, 'span_minutes':round((stamp(cluster['end'])-stamp(cluster['start'])).total_seconds()/60, 2)}
                     for cluster in clusters if cluster['awake_minutes'] >= 20]
+    if result['awakening_timing_unknown']:
+        # Keep illustrative colors, but never turn their placement into reported clock times.
+        result['awakenings'], result['disrupted_windows'] = [], []
+        for key in ('waso_minutes', 'longest_wake_minutes', 'awakenings_5m'):
+            result[key] = None
+        reported = record.get('reported_awakenings')
+        if isinstance(reported, list) and reported:
+            lengths = [minutes(item.get('duration_seconds')) if isinstance(item, dict) else None for item in reported]
+            if all(value is not None for value in lengths) and sum(lengths) <= duration / 60:
+                result['waso_minutes'] = round(sum(lengths), 2)
+                result['longest_wake_minutes'] = max(lengths)
+                result['awakenings_5m'] = sum(value >= 5 for value in lengths)
     if result['onset'] is None and result['latency_minutes'] is not None and result['latency_minutes'] * 60 < duration:
         result['onset'] = (start + timedelta(minutes=result['latency_minutes'])).isoformat()
         result['onset_source'] = 'bedtime + reported latency'
@@ -304,4 +317,4 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
             'coverage': {'nights': len(nights), 'stage_nights': sum(night['waso_minutes'] is not None for night in nights),
                          'calendar_days': (last-first).days+1,
                          'missing_days': (last-first).days+1-len(nights)},
-            'method': 'One longest main-sleep session per Oura-assigned day drives nightly trends. All other sessions remain in the night view. Awake during sleep sums stage-awake intervals between first and last sleep; awakening counts use continuous runs of at least five minutes. Times use each recorded UTC offset; stage timestamps keep the start offset on nights crossing an offset change. Ring estimates can miss quiet wakefulness. No data is inferred across gaps or missing nights.'}
+            'method': 'One longest main-sleep session per Oura-assigned day drives nightly trends. All other sessions remain in the night view. Awake during sleep sums stage-awake intervals between first and last sleep; awakening counts use continuous runs of at least five minutes. For manual awakenings with unknown clock times, reported durations are used and guessed placements are excluded from hourly waking analysis. Times use each recorded UTC offset; stage timestamps keep the start offset on nights crossing an offset change. Ring estimates can miss quiet wakefulness. No data is inferred across gaps or missing nights.'}
