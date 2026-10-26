@@ -7,7 +7,7 @@
   const valid=value=>typeof value==='number' && Number.isFinite(value);
   const duration=value=>valid(value)?`${Math.floor(Math.round(value)/60)}h ${Math.round(value)%60}m`:'—';
   const mins=value=>valid(value)?`${Math.round(value)}m`:'—';
-  const awakeningNote=night=>night.awakening_timing_unknown?`${valid(night.waso_minutes)?'Self-reported awake time: '+mins(night.waso_minutes)+'. ':''}Exact awakening time is unknown; the awake position shown on the timeline is a guess and is excluded from hourly waking analysis.`:null;
+  const awakeningNote=night=>night.awakening_timing_unknown?`${valid(night.waso_minutes)?'Self-reported awake time: '+mins(night.waso_minutes)+'. ':''}Exact time of the overnight awakening is unknown; this does not refer to your final wake-up. The awake position shown on the timeline is a guess and is excluded from hourly waking analysis.`:null;
   const metric=(value,unit='')=>valid(value)?`${Number(value.toFixed(1))}${unit}`:'—';
   const clock=value=>typeof value==='string'?clockNumber(Number(value.slice(11,13))*60+Number(value.slice(14,16))):'—';
   const clockNumber=value=>{if(!valid(value))return '—';const time=((Math.round(value)%1440)+1440)%1440,h=Math.floor(time/60);return `${h%12||12}:${String(time%60).padStart(2,'0')} ${h<12?'a.m.':'p.m.'}`;};
@@ -99,10 +99,10 @@
       const button=node('button',null,'sleep-night-row'),label=node('span',null,'sleep-night-label');
       const manual=night.data_source==='manual',total=duration(night.asleep_minutes);
       button.type='button';button.setAttribute('aria-pressed',String(night.id===selected));
-      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(night.asleep_minutes)?total+' asleep':'total sleep unknown'}${manual?'; manual entry':''}${night.stages_estimated?'; light, deep and REM stages are guesses':''}${night.awakening_timing_unknown?'; awakening clock time unknown':''}`);
+      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(night.asleep_minutes)?total+' asleep':'total sleep unknown'}${manual?'; manual entry':''}${night.stages_estimated?'; light, deep and REM stages are guesses':''}${night.awakening_timing_unknown?'; overnight awakening clock time unknown':''}`);
       label.append(node('span',night.day.slice(5)),node('strong',total,'sleep-night-total'));
       if(manual||night.stages_estimated)label.append(node('small',manual?(night.stages_estimated?'Manual · guessed stages':'Manual entry'):'Guessed stages'));
-      if(night.awakening_timing_unknown)label.append(node('small','Wake time unknown'));
+      if(night.awakening_timing_unknown)label.append(node('small','Night waking time unknown'));
       button.append(label);
       const track=node('span',null,'sleep-track'),base=night.bedtime_clock;
       const runs=night.stages.length?night.stages:[{stage:'unknown',start_seconds:0,end_seconds:night.in_bed_minutes*60}];
