@@ -202,6 +202,8 @@ def make_server(vault, database, port=8765, remote=None, bjj_root=None, sleep_st
                                   query.get('code', [''])[0], query.get('error', [None])[0])
                     return self.respond(303, b'', headers={'Location': f'http://127.0.0.1:{self.server.server_port}/', 'Set-Cookie': 'oura_state=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/api/oura/callback'})
                 assets = {"/people.js": ("people.js", "text/javascript"), "/restaurants.js": ("restaurants.js", "text/javascript"), "/plans.js": ("plans.js", "text/javascript"), "/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
+                assets["/theme.js"] = ("theme.js", "text/javascript")
+                assets["/bjj-player.js"] = ("bjj-player.js", "text/javascript")
                 assets["/voice.js"] = ("voice.js", "text/javascript")
                 assets["/bjj.js"] = ("bjj.js", "text/javascript")
                 assets["/sleep.js"] = ("sleep.js", "text/javascript")

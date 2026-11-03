@@ -1,7 +1,7 @@
 /* Private Oura dashboard. All analysis and rendering run on this computer. */
 (() => {
   const $=id=>document.getElementById(id);
-  const colors={asleep:'#355977',awake:'#b67c30',onset:'#7e8fbb',wake:'#345b47',hrv:'#7e8fbb',deep:'#355977',light:'#b5cbd2',rem:'#7e8fbb'};
+  const colors={asleep:'var(--chart-asleep, #355977)',awake:'var(--chart-awake, #b67c30)',onset:'var(--chart-rem, #7e8fbb)',wake:'var(--chart-wake, #345b47)',hrv:'var(--chart-rem, #7e8fbb)',deep:'var(--chart-deep, #355977)',light:'var(--chart-light, #b5cbd2)',rem:'var(--chart-rem, #7e8fbb)'};
   let data=null, selected=null, visibleNights=60, loading=0, polling=null, analysisStart=null;
   const node=(tag,text,cls)=>{const item=document.createElement(tag);if(text!=null)item.textContent=text;if(cls)item.className=cls;return item;};
   const valid=value=>typeof value==='number' && Number.isFinite(value);
@@ -36,7 +36,7 @@
   function interactivePlot(target,svg,rows,series,{px,py,width,top,bottom,format=String,label,expanded=false,initialIndex,open}){
     let active=-1;
     const selection=svgNode('g',{'pointer-events':'none'}),guide=svgNode('line',{y1:top,y2:bottom,class:'sleep-chart-guide'});selection.append(guide);
-    const dots=series.map(line=>{const dot=svgNode('circle',{r:4,fill:line.color,stroke:'#fffefb','stroke-width':2});selection.append(dot);return dot;});
+    const dots=series.map(line=>{const dot=svgNode('circle',{r:4,fill:line.color,stroke:'var(--surface, #fffefb)','stroke-width':2});selection.append(dot);return dot;});
     const hit=svgNode('rect',{x:0,y:top,width,height:bottom-top,fill:'transparent','pointer-events':'all'});svg.append(hit,selection);
     svg.classList.add('sleep-interactive-plot');svg.setAttribute('tabindex','0');svg.setAttribute('aria-label',label+'. Use left and right arrow keys to inspect values.'+(expanded?'':' Press Enter to enlarge.'));
     const readout=node('div',null,'sleep-chart-readout');readout.setAttribute('role','status');readout.setAttribute('aria-live','polite');readout.setAttribute('aria-atomic','true');

@@ -152,6 +152,10 @@ node --check static/plans.js
 node --check static/restaurants.js
 node --check static/voice.js
 node --check static/sleep.js
+node --check static/theme.js
+node --check static/bjj-player.js
+node tests/test_theme.cjs
+node tests/test_bjj_playback.cjs
 node tests/test_sleep_charts.cjs
 node tests/test_carryover.cjs
 node tests/test_caffeine.cjs
@@ -159,6 +163,10 @@ node tests/test_oura_summary.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
+
+The app automatically uses its night palette from 9 p.m. until 7 a.m. in the viewing device's local time. It switches while the page remains open and refreshes when the device wakes or the tab returns to the foreground. The theme applies before the first paint and covers forms, sleep charts and enlarged charts, and the BJJ player. The daytime palette is retained outside those hours.
+
+The BJJ player's **Full screen** button sits below the video, outside the phone's hold-to-speed-up region. It uses standard fullscreen where available and the [native video fullscreen API on iPhone](https://developer.apple.com/documentation/webkit/delivering-video-content-for-safari). If the browser refuses native fullscreen, the player fills the available browser viewport with an exit button; Escape also closes this view. Search timestamps and saved notes reuse a loaded volume instead of restarting its stream and downloading the transcript again. New streams request the selected timestamp immediately; a timestamp of zero starts at zero, while opening a volume from the library still resumes its saved position. Transcript failures do not block playback. Media remains private and is not added to Git.
 
 
 

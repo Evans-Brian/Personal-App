@@ -3,8 +3,40 @@
   let library=null,current=null,segments=[],openToken=0;
   const time=value=>`${Math.floor(Number(value||0)/60)}:${String(Math.floor(Number(value||0)%60)).padStart(2,'0')}`;
   const video=$('bjj-video'),holdRegion=$('bjj-speed-hold'),holdSpeed=$('bjj-hold-speed'),holdIndicator=$('bjj-speed-indicator');
-  video.addEventListener('playing',()=>{$('bjj-video-status').textContent='';});
-  video.addEventListener('error',()=>{$('bjj-video-status').textContent='This video could not load. Check your connection and reopen the volume.';});
+  const player=BJJPlayer.create(video,{status:text=>{$('bjj-video-status').textContent=text;}});
+  const fullscreen=$('bjj-fullscreen'),videoWrap=video.closest('.bjj-video-wrap'),exitFullscreen=$('bjj-exit-fullscreen');
+  let expanded=false;
+  function closeExpanded(restoreFocus=true){
+    if(!expanded)return;
+    expanded=false;videoWrap.classList.remove('expanded');document.body.classList.remove('bjj-video-expanded');
+    videoWrap.removeAttribute('role');videoWrap.removeAttribute('aria-modal');videoWrap.removeAttribute('aria-label');
+    exitFullscreen.hidden=true;finishSpeedHold();updateFullscreen();
+    if(restoreFocus)fullscreen.focus({preventScroll:true});
+  }
+  function openExpanded(){
+    expanded=true;videoWrap.classList.add('expanded');document.body.classList.add('bjj-video-expanded');
+    videoWrap.setAttribute('role','dialog');videoWrap.setAttribute('aria-modal','true');videoWrap.setAttribute('aria-label','Video player');
+    exitFullscreen.hidden=false;exitFullscreen.focus({preventScroll:true});updateFullscreen();
+    $('bjj-video-status').textContent='';
+  }
+  function updateFullscreen(){
+    const active=Boolean(expanded || document.fullscreenElement || video.webkitDisplayingFullscreen);
+    fullscreen.textContent=active?'Exit full screen':'Full screen';
+    fullscreen.setAttribute('aria-pressed',String(active));
+    fullscreen.disabled=video.readyState<1;
+  }
+  fullscreen.addEventListener('click',()=>{
+    finishSpeedHold();
+    if(expanded){closeExpanded();return;}
+    try{Promise.resolve(BJJPlayer.fullscreen(video)).catch(openExpanded);}
+    catch{openExpanded();}
+  });
+  exitFullscreen.addEventListener('click',()=>closeExpanded());
+  document.addEventListener('keydown',event=>{if(expanded && event.key==='Escape'){event.preventDefault();closeExpanded();}});
+  document.addEventListener('focusin',event=>{if(expanded && !videoWrap.contains(event.target))exitFullscreen.focus({preventScroll:true});});
+  window.addEventListener('hashchange',()=>closeExpanded(false));
+  document.addEventListener('fullscreenchange',updateFullscreen);
+  for(const name of ['loadedmetadata','loadstart','webkitbeginfullscreen','webkitendfullscreen'])video.addEventListener(name,updateFullscreen);
   const mobileHoldQuery=matchMedia('(max-width: 750px) and (pointer: coarse)');
   let holdTimer=null,holdSource='',previousRate=1;
   function updateHoldTarget(){holdRegion.style.pointerEvents=mobileHoldQuery.matches?'auto':'none';}
@@ -28,9 +60,23 @@
   window.addEventListener('blur',()=>finishSpeedHold());
   async function request(url,options){const response=await fetch(url,options);let data;try{data=await response.json();}catch{data={error:'The BJJ service returned an invalid response.'};}if(!response.ok)throw Error(data.error||`Request failed (${response.status}).`);return data;}
   function message(text,error=false){$('bjj-status').textContent=text;$('bjj-status').className=error?'error':'';}
-  function seek(seconds){const video=$('bjj-video');video.currentTime=Number(seconds)||0;video.play().catch(()=>{});$('bjj-player-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
-  async function openVolume(course,item,seconds=0){if(!item.present){message('This volume has not been downloaded and validated yet.',true);return;}const token=++openToken;current={course,item};segments=[];localStorage.setItem('bjj:last-media',item.id);$('bjj-player-panel').hidden=false;$('bjj-player-course').textContent=`${course.title} · ${course.instructor}`;$('bjj-player-title').textContent=`Volume ${item.volume}`;$('bjj-note-excerpt').textContent='';$('bjj-note-time').textContent=time(seconds);const videoStatus=$('bjj-video-status');videoStatus.textContent='Loading video…';const video=$('bjj-video'),saved=Number(localStorage.getItem(`bjj:position:${item.id}`)||0),target=Number(seconds)||saved||0;let applied=false;const applyStart=()=>{if(applied||token!==openToken)return;applied=true;video.removeEventListener('loadedmetadata',applyStart);video.currentTime=Math.min(target,Math.max(0,video.duration-1));};video.addEventListener('loadedmetadata',applyStart,{once:true});video.src=`/api/bjj/media/${encodeURIComponent(item.id)}`;if(video.readyState>=1)applyStart();video.play().catch(error=>{if(token===openToken&&error.name!=='AbortError')videoStatus.textContent='Playback could not start. Tap the video’s play control or reopen this volume.';});
-    const transcript=await request(`/api/bjj/transcript?media_id=${encodeURIComponent(item.id)}`);if(token!==openToken)return;segments=transcript.segments||[];const chapters=$('bjj-chapters');chapters.replaceChildren(new Option('Start','0'));for(const chapter of transcript.chapters||[])chapters.append(new Option(chapter.title||chapter.id,String(chapter.start_seconds||0)));
+  function seek(seconds){player.seek(seconds);$('bjj-player-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
+  async function openVolume(course,item,seconds=null){
+    if(!item.present){message('This volume has not been downloaded and validated yet.',true);return;}
+    let saved=0;try{saved=Number(localStorage.getItem(`bjj:position:${item.id}`)||0);localStorage.setItem('bjj:last-media',item.id);}catch{}
+    const target=seconds==null?saved:Number(seconds)||0,same=current?.item.id===item.id;
+    $('bjj-player-panel').hidden=false;$('bjj-note-time').textContent=time(target);
+    player.open(`/api/bjj/media/${encodeURIComponent(item.id)}`,target);
+    $('bjj-player-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+    if(same)return;
+    const token=++openToken;current={course,item};segments=[];
+    $('bjj-player-course').textContent=`${course.title} · ${course.instructor}`;$('bjj-player-title').textContent=`Volume ${item.volume}`;$('bjj-note-excerpt').textContent='';
+    const chapters=$('bjj-chapters');chapters.replaceChildren(new Option('Start','0'));
+    try{
+      const transcript=await request(`/api/bjj/transcript?media_id=${encodeURIComponent(item.id)}`);if(token!==openToken)return;
+      segments=transcript.segments||[];
+      for(const chapter of transcript.chapters||[])chapters.append(new Option(chapter.title||chapter.id,String(chapter.start_seconds||0)));
+    }catch{if(token===openToken)$('bjj-note-excerpt').textContent='The transcript could not load. Video playback is still available.';}
   }
   function renderLibrary(){
     const panel=$('bjj-library');panel.replaceChildren();

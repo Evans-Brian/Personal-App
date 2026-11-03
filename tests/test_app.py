@@ -79,6 +79,12 @@ class JournalTests(unittest.TestCase):
         response = conn.getresponse()
         self.assertEqual(response.status,200)
         entry = json.loads(response.read())
+        for asset in ('theme.js', 'bjj-player.js'):
+            conn.request('GET', '/'+asset)
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertIn('javascript', response.getheader('Content-Type'))
+            self.assertTrue(response.read())
         body = json.dumps(dict(date=entry['date'],period='morning',content='HTTP test',revision=entry['revision']))
         conn.request('POST','/api/entry',body,{'Content-Type':'application/json'})
         response = conn.getresponse()
