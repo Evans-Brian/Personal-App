@@ -1,5 +1,6 @@
 const el = id => document.getElementById(id);
-let period = new Date().getHours() < 15 ? 'morning' : 'evening';
+const initialNow = new Date();
+let period = initialNow.getHours()>=2 && initialNow.getHours()<15 ? 'morning' : 'evening';
 let entry = null, dirty = false, busy = false;
 let guided = false, parts = [];
 let yesterdayReflection="";
@@ -479,8 +480,7 @@ function renderCarryover(){
   }
 }
 function changed(){dirty=true;if(storeDraft())status('Draft saved in this browser · not yet saved to your vault');}
-const now = new Date();
-el('date').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+el('date').value = JournalPlans.journalDay(initialNow);
 function status(message, error=false) { el('status').textContent=message; el('status').className=error?'error':''; }
 function controls(value) { busy=value; for(const id of ['date','previous-day','next-day','morning','evening','save','reload','entry']) el(id).disabled=value || (!entry && ['save','entry'].includes(id)); for(const area of document.querySelectorAll('#guided textarea, #guided input, #guided button, #plan-review input, #plan-review select, #plan-review button, #carryover button')) area.disabled=value || !entry; el('mode').disabled=value || !entry || (!guided && !parsePrompts(el('entry').value)); renderCarryover(); }
 function render() {
@@ -564,12 +564,13 @@ function renderTrends(entries){
   const key=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const days=new Map(entries.map(row=>[row.date,row]));
   const written=day=>{const row=days.get(key(day));return row && (row.morning==='written' || row.evening==='written');};
-  let cursor=new Date(),streak=0;if(!written(cursor))cursor.setDate(cursor.getDate()-1);
+  const today=new Date(JournalPlans.journalDay()+'T12:00:00');
+  let cursor=new Date(today),streak=0;if(!written(cursor))cursor.setDate(cursor.getDate()-1);
   while(written(cursor)){streak++;cursor.setDate(cursor.getDate()-1);}
   el('streak').textContent=`${streak} day${streak===1?'':'s'} journaling streak`;
   el('trends').replaceChildren();
   for(let offset=29;offset>=0;offset--){
-    const day=new Date();day.setDate(day.getDate()-offset);const date=key(day),row=days.get(date);
+    const day=new Date(today);day.setDate(day.getDate()-offset);const date=key(day),row=days.get(date);
     const line=document.createElement('div');line.className='trend-row';const label=document.createElement('span');label.textContent=date;line.append(label);
     for(const [metric,title] of [['good','Day satisfaction'],['productive','Productive']]){
       const cell=document.createElement('div');cell.className=metric;const value=row?.[metric];

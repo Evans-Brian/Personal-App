@@ -178,7 +178,7 @@
     chart($('sleep-stages-chart'),data.nights,[{key:'deep_minutes',name:'Deep',color:colors.deep},{key:'light_minutes',name:'Light',color:colors.light},{key:'rem_minutes',name:'REM',color:colors.rem}],{format:v=>`${Math.round(v)}m`,label:'Deep, light and REM sleep minutes by night'});
     wakeHours($('sleep-hours-chart'),data.wake_hours);table();$('sleep-method').textContent=data.method;
   }
-  function range(){const value=$('sleep-range').value,to=new Date();if(value==='custom')return;const from=new Date(to);if(value==='all')from.setFullYear(2015,0,1);else from.setDate(to.getDate()-Number(value)+1);$('sleep-from').value=analysisStart && dateKey(from)<analysisStart?analysisStart:dateKey(from);$('sleep-to').value=dateKey(to);}
+  function range(){const value=$('sleep-range').value,to=new Date(JournalPlans.journalDay()+'T12:00:00');if(value==='custom')return;const from=new Date(to);if(value==='all')from.setFullYear(2015,0,1);else from.setDate(to.getDate()-Number(value)+1);$('sleep-from').value=analysisStart && dateKey(from)<analysisStart?analysisStart:dateKey(from);$('sleep-to').value=dateKey(to);}
   async function load(){
     const id=++loading;$('sleep-status').textContent='Loading sleep history…';
     try{

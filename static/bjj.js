@@ -176,7 +176,7 @@
     trainingForm.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
     trainingDate.focus({preventScroll:true});
   }
-  const today=new Date();trainingDate.value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  trainingDate.value=JournalPlans.journalDay();
   trainingDate.addEventListener('change',()=>{
     if(trainingDirty()&&!window.confirm('You have unsaved training notes. Leave this draft and open another date?')){trainingDate.value=loadedTrainingDate;return;}
     loadTraining();
@@ -186,7 +186,7 @@
   const historyList=$('bjj-history-list'),historyDetail=$('bjj-history-detail');
   let historyEntries=[],historyTotal=0,historySelected='',historyRequestToken=0,historyDetailToken=0;
   const historyMonthOpen=new Map();
-  const now=new Date(),currentMonthKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const currentMonthKey=JournalPlans.journalDay().slice(0,7);
   const displayDate=day=>new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
   const detailDate=day=>new Intl.DateTimeFormat('en-US',{month:'long',day:'numeric',year:'numeric'}).format(new Date(`${day}T12:00:00`));
   const monthLabel=day=>new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date(`${day}T12:00:00`));

@@ -1,5 +1,11 @@
 /* Pure Markdown helpers shared by the editor and regression checks. */
 (function(root){
+  function journalDay(now=new Date()){
+    // Use the device's local calendar, including month/year and DST boundaries.
+    const day=new Date(now.getFullYear(),now.getMonth(),now.getDate(),12);
+    if(now.getHours()<2)day.setDate(day.getDate()-1);
+    return `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+  }
   const heading='### Morning plans — evening check-in';
   function items(answer, limit=Infinity){
     const lines=answer.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -92,6 +98,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={journalDay,jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
