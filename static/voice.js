@@ -16,7 +16,10 @@
   function appendTranscript(text){
     if(!active?.isConnected || active.disabled || active.readOnly){review.value=text;review.hidden=false;info.textContent='The field has changed. Copy your transcript before closing.';return;}
     text=text.trim();if(!text)return;
-    const addition=(active.value && !/\s$/.test(active.value)?' ':'')+text;
+    const separateLines=active.tagName==='TEXTAREA' && active.closest('#bjj-page');
+    const atLineStart=/(?:^|\n)[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?$/.test(active.value);
+    const needsSeparator=active.value && !(separateLines?atLineStart:/\s$/.test(active.value));
+    const addition=(needsSeparator?(separateLines?'\n':' '):'')+text;
     if(active.maxLength>=0 && active.value.length+addition.length>active.maxLength){review.value=text;review.hidden=false;info.textContent='This transcript exceeds the field limit. Copy it into a longer note.';return;}
     active.value+=addition;active.dispatchEvent(new Event('input',{bubbles:true}));active.dispatchEvent(new Event('change',{bubbles:true}));
     const target=active;close();target.focus();

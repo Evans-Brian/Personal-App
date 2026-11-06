@@ -80,3 +80,7 @@ body.bjj-video-expanded{overflow:hidden}
 .bjj-video-wrap.expanded video{width:100%;height:100%;max-height:100dvh;object-fit:contain;border-radius:0}
 .bjj-video-wrap.expanded .bjj-speed-hold{bottom:54px}
 #bjj-exit-fullscreen{position:absolute;z-index:2;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));min-width:44px;min-height:44px;background:#17251fe6;color:#fff;border-color:#8a9a90;font-size:24px;padding:3px 12px}
+#bjj-page label:has(>.voice-field-shell>textarea){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px}
+#bjj-page label>.voice-field-shell:has(>textarea){display:contents}
+#bjj-page .voice-field-shell>textarea{grid-column:1/-1;grid-row:2;margin-top:4px;padding:12px;white-space:pre-wrap}
+#bjj-page .voice-field-shell:has(>textarea)>.voice-button{position:static;grid-column:2;grid-row:1;justify-self:end;min-height:44px;height:44px;border:1px solid var(--line, #c7d4ca);border-radius:8px}

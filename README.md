@@ -161,6 +161,7 @@ node tests/test_sleep_charts.cjs
 node tests/test_carryover.cjs
 node tests/test_caffeine.cjs
 node tests/test_oura_summary.cjs
+node tests/test_voice.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
