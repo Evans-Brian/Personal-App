@@ -1,6 +1,6 @@
 # Working on this app
 
-After completing requested app changes, run relevant checks, review the staged diff for private data, commit, and push to the configured GitHub remote by default. The user has explicitly authorized this workflow; do not ask again for routine pushes. Never force-push or overwrite unrelated remote changes. If authentication or a failed check blocks the push, report it accurately.
+After every requested app change, run relevant checks, review the staged diff for private data, commit, and push the completed changes to `origin` (`Evans-Brian/Personal-App`) before reporting the work as finished. This is a standing user instruction for future chats and sessions; do not leave changes local or ask again for routine push permission. Verify that the remote branch contains the final commit. Never force-push or overwrite unrelated remote changes. If authentication, a required check, or another real blocker prevents the push, attempt an appropriate fix and clearly report what remains unpushed and why; a local commit or deployment alone does not complete the GitHub step.
 
 Publish application source, tests, and documentation only. Never commit databases, journal/vault content, people or restaurant records, browser drafts, backups, local settings, credentials, tokens, or generated runtime files. Keep .gitignore current and inspect staged paths before committing. Do not modify synced project sources outside this app.
 
