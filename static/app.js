@@ -82,14 +82,14 @@ function showConflict(latest){
 }
 const prompts = {
   morning: ['How am I feeling this morning?', 'Priority Tasks', 'Secondary Tasks', 'What might get in the way, and what could help?'],
-  evening: ['What made me happy or grateful today?', 'When did I feel most engaged or connected today?', 'What am I proud of today?', 'What would I do differently if I replayed today?', 'What moment would I like to remember?', 'What did I learn today—about myself, someone else, or the world?']
+  evening: [JournalPlans.combinedEveningTitle, 'What am I proud of today?', 'What would I do differently if I replayed today?']
 };
 const hints = {
   morning: ['Notice your mood, energy, sleep, or whatever is on your mind.', 'The tasks that matter most today. Keep the list focused and realistic.', 'Lower-priority tasks to tackle after your priorities, if time and energy allow.', 'Think about practical obstacles, feelings, distractions, or support you might need.'],
-  evening: ['A person, a small pleasure, or something that went well.', 'An activity that held your attention, or a moment of connection with someone.', 'An effort, a choice, or how you handled something. Small things count.', 'One thing you might approach differently, knowing what you know now.', 'Capture a detail, a conversation, or a scene you would like to revisit.', 'A discovery, a new perspective, or something you noticed about yourself.']
+  evening: ['A small pleasure, a connection, a memorable moment, or something you learned. Anything you want to keep from today belongs here.', 'An effort, a choice, or how you handled something. Small things count.', 'One thing you might approach differently, knowing what you know now.']
 };
 function parsePrompts(text) {
-  if(period==='evening')text=JournalPlans.split(text).body;
+  if(period==='evening')text=JournalPlans.split(JournalPlans.combineEvening(text)).body;
   else text=JournalPlans.sleep(JournalPlans.upgrade(text)).body;
   const matches = [...text.matchAll(/^### (.+)\r?\n/gm)];
   if (matches.length !== prompts[period].length || text.slice(0,matches[0].index).trim() || matches.some((m,i)=>m[1].trim()!==prompts[period][i])) return null;
@@ -141,6 +141,7 @@ function content() {
   }).join('')+metadata;
 }
 function showEditor(text, preferGuided=true) {
+  if(period==='evening')text=JournalPlans.combineEvening(text);
   // Refresh only an entirely blank old template; preserve answers when upgrading current headings.
   const oldMorning = ['How am I feeling this morning?', 'What matters most today?', 'What is one small thing I can do for myself?'];
   const oldEvening = ['What stood out today?', 'What felt difficult, and what helped?', 'What do I want to carry into tomorrow?'];
@@ -328,14 +329,7 @@ function showEditor(text, preferGuided=true) {
     const title=document.createElement('h3');title.textContent='From yesterday: what I would do differently';
     const answer=document.createElement('p');answer.textContent=yesterdayReflection;answer.style.whiteSpace='pre-wrap';reflection.append(title,answer);el('guided').append(reflection);
   }
-  let extras=null;
   if(guided) parts.forEach((part,i)=>{
-    if(period==='evening' && i===4){
-      extras=document.createElement('details'); extras.className='optional-prompts';
-      extras.open=parts.slice(4).some(p=>p.answer.trim());
-      const summary=document.createElement('summary'); summary.textContent='Optional add-ons · A memory and something learned';
-      extras.append(summary); el('guided').append(extras);
-    }
     const group=document.createElement('div'); group.className='prompt';
     const label=document.createElement('label'); label.htmlFor=`answer-${i}`; label.textContent=part.title;
     const hint=document.createElement('p'); hint.id=`answer-hint-${i}`; hint.textContent=hints[period][i];
@@ -354,9 +348,9 @@ function showEditor(text, preferGuided=true) {
       }
       el('guided').append(group);return;
     }
-    const answer=document.createElement('textarea'); answer.id=`answer-${i}`; answer.value=part.answer; answer.rows=3;
+    const answer=document.createElement('textarea'); answer.id=`answer-${i}`; answer.value=part.answer; answer.rows=period==='evening'&&i===0?6:3;
     answer.setAttribute('aria-describedby',hint.id); answer.addEventListener('input',changed);
-    group.append(label,hint,answer); (extras || el('guided')).append(group);
+    group.append(label,hint,answer); el('guided').append(group);
   });
   if(guided && period==='evening'){
     const value=JournalPlans.habits(text).value;

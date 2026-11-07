@@ -16,6 +16,48 @@
   const secondaryTitle='Secondary Tasks';
   const legacyPriorityTitle='What would make today feel like a good day?';
   const legacySecondaryTitle='What would be great to do today, if I have time?';
+  const combinedEveningTitle='What made me happy, grateful, engaged, or connected?';
+  function combineEvening(text){
+    const labels=new Map([
+      ['What made me happy or grateful today?','Happy / grateful'],
+      ['When did I feel most engaged or connected today?','Engaged / connected'],
+      ['What moment would I like to remember?','Memory'],
+      ['What did I learn today—about myself, someone else, or the world?','Something learned']
+    ]);
+    const boundaries=[];let offset=0,fence=null;
+    for(const line of text.match(/[^\n]*\n|[^\n]+$/g)||[]){
+      const plain=line.replace(/\r?\n$/,'');
+      if(fence){
+        if(new RegExp('^ {0,3}'+fence.char+'{'+fence.length+',}[ \\t]*$').test(plain))fence=null;
+      }else{
+        const opening=plain.match(/^ {0,3}(`{3,}|~{3,})/),heading=plain.match(/^### (.+)$/);
+        if(opening)fence={char:opening[1][0],length:opening[1].length};
+        else if(heading || /^<!-- (?:evening-habits|evening-jo): .*? -->[ \t]*$/.test(plain))
+          boundaries.push({start:offset,body:offset+line.length,title:heading?heading[1].trim():null});
+      }
+      offset+=line.length;
+    }
+    const selected=boundaries.filter(block=>block.title===combinedEveningTitle||labels.has(block.title));
+    if(!selected.length || (selected.length===1&&selected[0].title===combinedEveningTitle))return text;
+    const combined=[],answers=new Map([...labels.keys()].map(title=>[title,[]]));
+    for(let i=0;i<boundaries.length;i++){
+      const block=boundaries[i];block.end=boundaries[i+1]?.start??text.length;
+      const answer=text.slice(block.body,block.end).trim();
+      if(!answer)continue;
+      if(block.title===combinedEveningTitle)combined.push(answer);
+      else if(answers.has(block.title))answers.get(block.title).push(answer);
+    }
+    const nl=text.includes('\r\n')?'\r\n':'\n';
+    for(const [title,label] of labels)if(answers.get(title).length)combined.push(label+':'+nl+answers.get(title).join(nl+nl));
+    const merged='### '+combinedEveningTitle+nl+nl+combined.join(nl+nl)+nl+nl;
+    const output=[text.slice(0,boundaries[0].start)];let inserted=false;
+    for(const block of boundaries){
+      if(block.title===combinedEveningTitle||labels.has(block.title)){
+        if(!inserted){output.push(merged);inserted=true;}
+      }else output.push(text.slice(block.start,block.end));
+    }
+    return output.join('');
+  }
   function optional(text){
     const match=text.match(/^### (?:Secondary Tasks|What would be great to do today, if I have time\?)\s*\r?\n([\s\S]*?)(?=^### |$(?![\s\S]))/m);
     return match?items(match[1],Infinity):[];
@@ -98,6 +140,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={journalDay,jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={journalDay,combineEvening,combinedEveningTitle,jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

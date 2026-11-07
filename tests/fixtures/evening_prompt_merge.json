@@ -1,0 +1,32 @@
+[
+  {
+    "name": "all answers and trailing metadata",
+    "before": "### Daily ratings\n\nDay satisfaction: 7\nDay satisfaction scale: 10\nProductive day: 6\nProductivity scale: 10\n\n### What made me happy or grateful today?\n\nA good walk.\n- A quiet coffee.\n\n### When did I feel most engaged or connected today?\n\nAn absorbing project.\n\n### What am I proud of today?\n\nKept a promise.\n\n### What would I do differently if I replayed today?\n\nStart earlier.\n\n### What moment would I like to remember?\n\nThe sunset.\n\n### What did I learn today—about myself, someone else, or the world?\n\nA new perspective.\n\n<!-- evening-habits: %7B%22caffeine_last_intake%22%3A%2216%3A00%22%7D -->\n<!-- evening-jo: %7B%22jo%22%3Afalse%7D -->\n",
+    "after": "### Daily ratings\n\nDay satisfaction: 7\nDay satisfaction scale: 10\nProductive day: 6\nProductivity scale: 10\n\n### What made me happy, grateful, engaged, or connected?\n\nHappy / grateful:\nA good walk.\n- A quiet coffee.\n\nEngaged / connected:\nAn absorbing project.\n\nMemory:\nThe sunset.\n\nSomething learned:\nA new perspective.\n\n### What am I proud of today?\n\nKept a promise.\n\n### What would I do differently if I replayed today?\n\nStart earlier.\n\n<!-- evening-habits: %7B%22caffeine_last_intake%22%3A%2216%3A00%22%7D -->\n<!-- evening-jo: %7B%22jo%22%3Afalse%7D -->\n"
+  },
+  {
+    "name": "empty template has no empty labels",
+    "before": "### What made me happy or grateful today?\n\n\n### When did I feel most engaged or connected today?\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n### What moment would I like to remember?\n\n\n### What did I learn today—about myself, someone else, or the world?\n\n",
+    "after": "### What made me happy, grateful, engaged, or connected?\n\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n"
+  },
+  {
+    "name": "one answer with Windows newlines",
+    "before": "### What made me happy or grateful today?\r\n\r\n\r\n### When did I feel most engaged or connected today?\r\n\r\nTwo lines.\r\nSecond line.\r\n\r\n### What am I proud of today?\r\n\r\nTried.\r\n\r\n",
+    "after": "### What made me happy, grateful, engaged, or connected?\r\n\r\nEngaged / connected:\r\nTwo lines.\r\nSecond line.\r\n\r\n### What am I proud of today?\r\n\r\nTried.\r\n\r\n"
+  },
+  {
+    "name": "already combined remains unchanged",
+    "before": "### What made me happy, grateful, engaged, or connected?\n\nMy own new answer.\n\n### What am I proud of today?\n\nTried.\n",
+    "after": "### What made me happy, grateful, engaged, or connected?\n\nMy own new answer.\n\n### What am I proud of today?\n\nTried.\n"
+  },
+  {
+    "name": "partial upgrade retains the new answer and custom section",
+    "before": "Intro stays.\n\n### What made me happy, grateful, engaged, or connected?\n\nAlready combined.\n\n### My custom reflection\n\nKeep this.\n\n### What moment would I like to remember?\n\nA conversation.\n",
+    "after": "Intro stays.\n\n### What made me happy, grateful, engaged, or connected?\n\nAlready combined.\n\nMemory:\nA conversation.\n\n### My custom reflection\n\nKeep this.\n\n"
+  },
+  {
+    "name": "headings inside code are answer text",
+    "before": "### What made me happy or grateful today?\n\nA quoted heading:\n```markdown\n### When did I feel most engaged or connected today?\nThis is quoted, not another question.\n```\n\n### When did I feel most engaged or connected today?\n\nActual connection.\n\n",
+    "after": "### What made me happy, grateful, engaged, or connected?\n\nHappy / grateful:\nA quoted heading:\n```markdown\n### When did I feel most engaged or connected today?\nThis is quoted, not another question.\n```\n\nEngaged / connected:\nActual connection.\n\n"
+  }
+]

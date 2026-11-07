@@ -10,10 +10,11 @@ import json
 from urllib.parse import unquote
 from task_history import archive, evening_tasks
 from day_context import day_context, add_day_context
+from migrate_evening_prompts import COMBINED_PROMPT, normalize_text as combine_evening_prompts
 
 PROMPTS = {
     "morning": "### How am I feeling this morning?\n\n\n### Priority Tasks\n\n\n### Secondary Tasks\n\n\n### What might get in the way, and what could help?\n\n",
-    "evening": "### What made me happy or grateful today?\n\n\n### When did I feel most engaged or connected today?\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n\n### What moment would I like to remember?\n\n\n### What did I learn today—about myself, someone else, or the world?\n\n",
+    "evening": f"### {COMBINED_PROMPT}\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n",
 }
 RATING_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
 
@@ -164,6 +165,8 @@ class Journal:
     def save(self, day, period, content, revision):
         if period not in PROMPTS or not isinstance(content, str):
             raise ValueError("Invalid journal section.")
+        if period == 'evening':
+            content = combine_evening_prompts(content)
         if len(content) > 200_000 or re.search(r"^#{1,2} ", content, re.M):
             raise ValueError("Use level-three headings (###) within an entry; maximum 200,000 characters.")
         with self.lock:

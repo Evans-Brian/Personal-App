@@ -54,7 +54,7 @@ Personal-App/
 
 Your chosen vault is the canonical journal store. Entries use `Journal/YYYY-MM-DD.md`, with YAML `date`, `type`, and `tags` on new files. The browser edits ordinary `## Morning` and `## Evening` sections. Prompts use `###` headings; answers can include Markdown. Existing frontmatter and text outside the selected section are preserved, including notes without frontmatter. Duplicate session headings require manual correction before editing in the app.
 
-Morning sections open as three answer boxes; evening sections have four main prompts and two optional add-ons in an expandable section. Answer boxes include short writing suggestions. Switch to “Write freely in Markdown” to edit the whole section. Custom sections open in the Markdown editor so their structure is preserved; guided mode is available when the standard prompt headings for that period are present. Both modes save to the same daily file.
+Morning sections have prompts for mood, priority tasks, secondary tasks, and obstacles. Evening sections have three prompts: a catch-all reflection, pride, and what to do differently. Memories and learning belong in the catch-all rather than optional add-ons. Answer boxes include short writing suggestions. Switch to “Write freely in Markdown” to edit the whole section. Custom sections open in the Markdown editor so their structure is preserved; guided mode is available when the standard prompt headings for that period are present. Both modes save to the same daily file.
 
 The date defaults to your browser's local day. Unsaved drafts are saved on each edit in browser local storage, keyed by vault, date, period, and editing session. Reloading or revisiting that date restores the most recent draft. Each tab writes a separate draft. Click Save to commit it to Markdown. Recovery is specific to this browser/profile and address; clearing site data or using private browsing can remove drafts. The Codex browser and Chrome do not share drafts. If browser storage is unavailable, a warning asks you to save before leaving. Drafts are local plaintext, like your Markdown files.
 
@@ -162,9 +162,12 @@ node tests/test_carryover.cjs
 node tests/test_caffeine.cjs
 node tests/test_oura_summary.cjs
 node tests/test_voice.cjs
+node tests/test_evening_prompts.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
+
+The evening journal has three reflection questions. Its first question combines happiness, gratitude, engagement, connection, memories, and learning; pride and what to do differently remain separate. Historical answers retain labels identifying their original question. Legacy browser drafts and saves from older clients are combined without dropping their answers or metadata. Preview the stored-note migration with `python migrate_evening_prompts.py`; `--apply` backs up all affected originals under ignored `data/backups/` before updating them. Ratings, task checklists, morning entries, and unrelated sections are preserved.
 
 The app automatically uses its night palette from 9 p.m. until 7 a.m. in the viewing device's local time. It switches while the page remains open and refreshes when the device wakes or the tab returns to the foreground. The theme applies before the first paint and covers forms, sleep charts and enlarged charts, and the BJJ player. The daytime palette is retained outside those hours.
 
