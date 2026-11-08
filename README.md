@@ -163,11 +163,14 @@ node tests/test_caffeine.cjs
 node tests/test_oura_summary.cjs
 node tests/test_voice.cjs
 node tests/test_evening_prompts.cjs
+node tests/test_weekend_work_habits.cjs
 ```
 
 This server is for personal use on localhost. It checks Host/Origin, rejects cross-origin writes, serves an explicit asset list, and binds exclusively to loopback. OAuth uses a short-lived one-use state and browser cookie. Journal and SQLite data remain ordinary local files; Oura and BJJ AI credential files are encrypted. DPAPI tests must run as the normal Windows user; a restricted sandbox may not have access to that user's encryption services.
 
 The evening journal has three reflection questions. Its first question combines happiness, gratitude, engagement, connection, memories, and learning; pride and what to do differently remain separate. Historical answers retain labels identifying their original question. Legacy browser drafts and saves from older clients are combined without dropping their answers or metadata. Preview the stored-note migration with `python migrate_evening_prompts.py`; `--apply` backs up all affected originals under ignored `data/backups/` before updating them. Ratings, task checklists, morning entries, and unrelated sections are preserved.
+
+The two Phone/Game Time Before Work checkboxes are weekdays only, based on the selected journal date. They are omitted on Saturdays and Sundays, and weekend saves discard their two metadata keys, including saves from older clients or recovered drafts. Caffeine and other habits remain available. To remove past weekend answers, preview with `python migrate_weekend_work_habits.py`, then use `--apply` to back up and update affected notes. Weekday notes, including weekday holidays, stay unchanged.
 
 The app automatically uses its night palette from 9 p.m. until 7 a.m. in the viewing device's local time. It switches while the page remains open and refreshes when the device wakes or the tab returns to the foreground. The theme applies before the first paint and covers forms, sleep charts and enlarged charts, and the BJJ player. The daytime palette is retained outside those hours.
 

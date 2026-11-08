@@ -20,7 +20,7 @@ function editor(habits={}){
   const input=nodes.find(node=>node.id==='last-caffeine-intake'),status=nodes.find(node=>node.id==='caffeine-intake-status');
   const button=text=>nodes.find(node=>node.tag==='button' && node.textContent===text);
   const controls={entry:{value:raw},'last-caffeine-intake':input,'phone-game-before-morning-work':{checked:true},'phone-game-before-afternoon-work':{checked:false},jo:{checked:false},'jo-worth':{checked:false},'jo-why':{value:''}};
-  Object.assign(context,{guided:true,period:'evening',reviewTasks:[],parts:[{title:'Reflection'}],el:id=>controls[id]||{value:id.startsWith('answer-')?'An answer.':''}});
+  Object.assign(context,{guided:true,period:'evening',entry:{date:'2026-11-06'},reviewTasks:[],parts:[{title:'Reflection'}],el:id=>controls[id]||{value:id.startsWith('answer-')?'An answer.':''}});
   vm.runInContext(content,context);
   return {input,status,button,save:()=>plans.habits(context.content()).value,changes:()=>changes,nodes};
 }

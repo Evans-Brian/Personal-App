@@ -130,18 +130,18 @@ function content() {
   }
   const prefix=period==='evening'?JournalPlans.serialize(reviewTasks.map((t,i)=>({...t,done:el(`plan-done-${i}`).checked})))+`### Daily ratings\n\nDay satisfaction: ${el('rating-good').value || 'unrated'}\nDay satisfaction scale: 10\nProductive day: ${el('rating-productive').value || 'unrated'}\nProductivity scale: 10\n\n`:'';
   // Retain historical morning metadata without collecting a new daily sleep report.
-  const metadata=period==='morning'?JournalPlans.sleep(el('entry').value).metadata:JournalPlans.serializeHabits({
+  const metadata=period==='morning'?JournalPlans.sleep(el('entry').value).metadata:JournalPlans.serializeHabits(JournalPlans.workHabits({
     ...(el('last-caffeine-intake').dataset.edited==='true'?JournalPlans.withCaffeine(JournalPlans.habits(el('entry').value).value,el('last-caffeine-intake').dataset.intake):JournalPlans.habits(el('entry').value).value),
-    phone_game_before_morning_work:el('phone-game-before-morning-work').checked,
-    phone_game_before_afternoon_work:el('phone-game-before-afternoon-work').checked
-  })+JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value});
+    phone_game_before_morning_work:el('phone-game-before-morning-work')?.checked,
+    phone_game_before_afternoon_work:el('phone-game-before-afternoon-work')?.checked
+  },entry.date))+JournalPlans.serializeJO({jo:el('jo').checked,worth_it:el('jo-worth').checked,why:el('jo-why').value});
   return (period==='morning'?'<!-- carry-review: '+encodeURIComponent(JSON.stringify(carryChoices))+' -->\n':'')+prefix+parts.map((p,i)=>{
     const answer=period==='morning' && (i===1 || i===2)?[...document.querySelectorAll(`[id^="${i===2?'optional':'plan'}-"].plan-input`)].map(field=>field.value.trim()).filter(Boolean).map(s=>`- ${s}`).join('\n'):el(`answer-${i}`).value.trim();
     return `### ${p.title}\n\n${answer}\n\n`;
   }).join('')+metadata;
 }
 function showEditor(text, preferGuided=true) {
-  if(period==='evening')text=JournalPlans.combineEvening(text);
+  if(period==='evening')text=JournalPlans.combineEvening(JournalPlans.cleanWeekendWorkHabits(text,entry.date));
   // Refresh only an entirely blank old template; preserve answers when upgrading current headings.
   const oldMorning = ['How am I feeling this morning?', 'What matters most today?', 'What is one small thing I can do for myself?'];
   const oldEvening = ['What stood out today?', 'What felt difficult, and what helped?', 'What do I want to carry into tomorrow?'];
@@ -352,7 +352,7 @@ function showEditor(text, preferGuided=true) {
     answer.setAttribute('aria-describedby',hint.id); answer.addEventListener('input',changed);
     group.append(label,hint,answer); el('guided').append(group);
   });
-  if(guided && period==='evening'){
+  if(guided && period==='evening' && !JournalPlans.isWeekend(entry.date)){
     const value=JournalPlans.habits(text).value;
     const box=document.createElement('section');box.className='prompt';
     const title=document.createElement('h3');title.textContent='Phone and game time';box.append(title);

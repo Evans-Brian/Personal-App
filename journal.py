@@ -11,6 +11,7 @@ from urllib.parse import unquote
 from task_history import archive, evening_tasks
 from day_context import day_context, add_day_context
 from migrate_evening_prompts import COMBINED_PROMPT, normalize_text as combine_evening_prompts
+from migrate_weekend_work_habits import normalize_text as remove_weekend_work_habits
 
 PROMPTS = {
     "morning": "### How am I feeling this morning?\n\n\n### Priority Tasks\n\n\n### Secondary Tasks\n\n\n### What might get in the way, and what could help?\n\n",
@@ -166,7 +167,7 @@ class Journal:
         if period not in PROMPTS or not isinstance(content, str):
             raise ValueError("Invalid journal section.")
         if period == 'evening':
-            content = combine_evening_prompts(content)
+            content = remove_weekend_work_habits(combine_evening_prompts(content), day)
         if len(content) > 200_000 or re.search(r"^#{1,2} ", content, re.M):
             raise ValueError("Use level-three headings (###) within an entry; maximum 200,000 characters.")
         with self.lock:

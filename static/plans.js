@@ -93,6 +93,27 @@
     return {body:text.replace(/\n?<!-- evening-habits: .*? -->\s*$/,''),value};
   }
   function serializeHabits(value){return '\n<!-- evening-habits: '+encodeURIComponent(JSON.stringify(value))+' -->\n';}
+  function isWeekend(day){
+    const weekday=new Date(day+'T12:00:00').getDay();
+    return weekday===0||weekday===6;
+  }
+  function workHabits(value,day){
+    const result={...value};
+    if(isWeekend(day)){delete result.phone_game_before_morning_work;delete result.phone_game_before_afternoon_work;}
+    return result;
+  }
+  function cleanWeekendWorkHabits(text,day){
+    if(!isWeekend(day))return text;
+    return text.replace(/<!-- evening-habits: (.*?) -->/g,(match,encoded)=>{
+      try{
+        const value=JSON.parse(decodeURIComponent(encoded));
+        if(!value||typeof value!=='object'||Array.isArray(value))return match;
+        if(!Object.hasOwn(value,'phone_game_before_morning_work')&&!Object.hasOwn(value,'phone_game_before_afternoon_work'))return match;
+        const cleaned=workHabits(value,day);
+        return Object.keys(cleaned).length?'<!-- evening-habits: '+encodeURIComponent(JSON.stringify(cleaned))+' -->':'';
+      }catch{return match;}
+    });
+  }
   function caffeine(value){
     const intake=value.caffeine_last_intake;
     if(intake==='none')return {intake,after4pm:false,legacy:false};
@@ -140,6 +161,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={journalDay,combineEvening,combinedEveningTitle,jo,serializeJO,habits,serializeHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={journalDay,combineEvening,combinedEveningTitle,jo,serializeJO,habits,serializeHabits,isWeekend,workHabits,cleanWeekendWorkHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

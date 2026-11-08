@@ -64,7 +64,7 @@ def normalize_text(text):
     return ''.join(output)
 
 
-def plan_changes(vault):
+def plan_changes(vault, transform=None):
     from journal import Journal
     vault = Path(vault).resolve()
     changes = []
@@ -76,14 +76,15 @@ def plan_changes(vault):
         start, end = Journal.bounds(text, 'evening')
         if start is None:
             continue
-        updated = (text[:start] + normalize_text(text[start:end]) + text[end:]).encode('utf-8')
+        body = transform(text[start:end], path.stem) if transform else normalize_text(text[start:end])
+        updated = (text[:start] + body + text[end:]).encode('utf-8')
         if updated != raw:
             changes.append((path, raw, updated))
     return changes
 
 
-def migrate(vault, backup_root):
-    changes = plan_changes(vault)
+def migrate(vault, backup_root, transform=None):
+    changes = plan_changes(vault, transform)
     if not changes:
         return 0
     backup = Path(backup_root).resolve()
