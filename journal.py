@@ -12,10 +12,11 @@ from task_history import archive, evening_tasks
 from day_context import day_context, add_day_context
 from migrate_evening_prompts import COMBINED_PROMPT, normalize_text as combine_evening_prompts
 from migrate_weekend_work_habits import normalize_text as remove_weekend_work_habits
+from evening_feelings import NEGATIVE_PROMPT, with_negative_feelings, negative_answer
 
 PROMPTS = {
     "morning": "### How am I feeling this morning?\n\n\n### Priority Tasks\n\n\n### Secondary Tasks\n\n\n### What might get in the way, and what could help?\n\n",
-    "evening": f"### {COMBINED_PROMPT}\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n",
+    "evening": f"### {COMBINED_PROMPT}\n\n\n### {NEGATIVE_PROMPT}\n\n\n### What am I proud of today?\n\n\n### What would I do differently if I replayed today?\n\n",
 }
 RATING_1_TO_10 = {1: 1, 2: 3, 3: 6, 4: 8, 5: 10}
 
@@ -174,6 +175,11 @@ class Journal:
             current = self.read(day)
             if revision != current["revision"]:
                 raise Conflict("This note changed since you opened it. Copy your draft, then reload to review the latest note.")
+            if period == 'evening':
+                # Older clients omitting the new question must not erase its saved answer.
+                content = with_negative_feelings(content, negative_answer(current['sections']['evening']))
+                if len(content) > 200_000:
+                    raise ValueError('Journal sections may contain at most 200,000 characters.')
             text = current["markdown"]
             if not current["exists"]:
                 text = f"---\ndate: {day}\ntype: journal\ntags:\n  - journal\n---\n\n# {day}\n\n"

@@ -82,14 +82,14 @@ function showConflict(latest){
 }
 const prompts = {
   morning: ['How am I feeling this morning?', 'Priority Tasks', 'Secondary Tasks', 'What might get in the way, and what could help?'],
-  evening: [JournalPlans.combinedEveningTitle, 'What am I proud of today?', 'What would I do differently if I replayed today?']
+  evening: [JournalPlans.combinedEveningTitle, JournalPlans.negativeEveningTitle, 'What am I proud of today?', 'What would I do differently if I replayed today?']
 };
 const hints = {
   morning: ['Notice your mood, energy, sleep, or whatever is on your mind.', 'The tasks that matter most today. Keep the list focused and realistic.', 'Lower-priority tasks to tackle after your priorities, if time and energy allow.', 'Think about practical obstacles, feelings, distractions, or support you might need.'],
-  evening: ['A small pleasure, a connection, a memorable moment, or something you learned. Anything you want to keep from today belongs here.', 'An effort, a choice, or how you handled something. Small things count.', 'One thing you might approach differently, knowing what you know now.']
+  evening: ['A small pleasure, a connection, a memorable moment, or something you learned. Anything you want to keep from today belongs here.', 'Anything upsetting, frustrating, anxious, or heavy. Describe it in your own words.', 'An effort, a choice, or how you handled something. Small things count.', 'One thing you might approach differently, knowing what you know now.']
 };
 function parsePrompts(text) {
-  if(period==='evening')text=JournalPlans.split(JournalPlans.combineEvening(text)).body;
+  if(period==='evening')text=JournalPlans.split(JournalPlans.withNegativeFeelings(JournalPlans.combineEvening(text))).body;
   else text=JournalPlans.sleep(JournalPlans.upgrade(text)).body;
   const matches = [...text.matchAll(/^### (.+)\r?\n/gm)];
   if (matches.length !== prompts[period].length || text.slice(0,matches[0].index).trim() || matches.some((m,i)=>m[1].trim()!==prompts[period][i])) return null;
@@ -141,7 +141,7 @@ function content() {
   }).join('')+metadata;
 }
 function showEditor(text, preferGuided=true) {
-  if(period==='evening')text=JournalPlans.combineEvening(JournalPlans.cleanWeekendWorkHabits(text,entry.date));
+  if(period==='evening')text=JournalPlans.withNegativeFeelings(JournalPlans.combineEvening(JournalPlans.cleanWeekendWorkHabits(text,entry.date)));
   // Refresh only an entirely blank old template; preserve answers when upgrading current headings.
   const oldMorning = ['How am I feeling this morning?', 'What matters most today?', 'What is one small thing I can do for myself?'];
   const oldEvening = ['What stood out today?', 'What felt difficult, and what helped?', 'What do I want to carry into tomorrow?'];

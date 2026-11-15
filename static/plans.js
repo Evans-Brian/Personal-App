@@ -17,13 +17,8 @@
   const legacyPriorityTitle='What would make today feel like a good day?';
   const legacySecondaryTitle='What would be great to do today, if I have time?';
   const combinedEveningTitle='What made me happy, grateful, engaged, or connected?';
-  function combineEvening(text){
-    const labels=new Map([
-      ['What made me happy or grateful today?','Happy / grateful'],
-      ['When did I feel most engaged or connected today?','Engaged / connected'],
-      ['What moment would I like to remember?','Memory'],
-      ['What did I learn today—about myself, someone else, or the world?','Something learned']
-    ]);
+  const negativeEveningTitle='Negative feelings today';
+  function eveningBlocks(text){
     const boundaries=[];let offset=0,fence=null;
     for(const line of text.match(/[^\n]*\n|[^\n]+$/g)||[]){
       const plain=line.replace(/\r?\n$/,'');
@@ -37,6 +32,23 @@
       }
       offset+=line.length;
     }
+    return boundaries.map((block,index)=>({...block,end:boundaries[index+1]?.start??text.length}));
+  }
+  function withNegativeFeelings(text,fallback=''){
+    const blocks=eveningBlocks(text),titles=new Set(blocks.map(block=>block.title));
+    if(titles.has(negativeEveningTitle)||![combinedEveningTitle,'What am I proud of today?','What would I do differently if I replayed today?'].every(title=>titles.has(title)))return text;
+    const start=blocks.find(block=>block.title==='What am I proud of today?').start,nl=text.includes('\r\n')?'\r\n':'\n';
+    const section='### '+negativeEveningTitle+nl+nl+(fallback.trim()?fallback.trim()+nl+nl:nl);
+    return text.slice(0,start)+section+text.slice(start);
+  }
+  function combineEvening(text){
+    const labels=new Map([
+      ['What made me happy or grateful today?','Happy / grateful'],
+      ['When did I feel most engaged or connected today?','Engaged / connected'],
+      ['What moment would I like to remember?','Memory'],
+      ['What did I learn today—about myself, someone else, or the world?','Something learned']
+    ]);
+    const boundaries=eveningBlocks(text);
     const selected=boundaries.filter(block=>block.title===combinedEveningTitle||labels.has(block.title));
     if(!selected.length || (selected.length===1&&selected[0].title===combinedEveningTitle))return text;
     const combined=[],answers=new Map([...labels.keys()].map(title=>[title,[]]));
@@ -161,6 +173,6 @@
     return tasks.concat(remaining.map(text=>({text,done:false})));
   }
   function serialize(tasks){return tasks.length?heading+'\n\n'+tasks.map(t=>`- [${t.done?'x':' '}] ${t.text}`+((t.original || t.followup || t.eveningAdded || t.submitted || t.cooldown || t.deleted)?' <!-- task-meta: '+encodeURIComponent(JSON.stringify({original:t.original || t.text,...(t.deleted?{deleted:true}:{}),...(t.cooldown?{cooldown:t.cooldown}:{}),...(t.submitted?{submitted:true}:{}),...(t.eveningAdded?{eveningAdded:true}:{}),...(t.followup?{followup:t.followup,parent:t.parent}: {})}))+' -->':'')).join('\n')+'\n\n':'';}
-  const api={journalDay,combineEvening,combinedEveningTitle,jo,serializeJO,habits,serializeHabits,isWeekend,workHabits,cleanWeekendWorkHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
+  const api={journalDay,combineEvening,combinedEveningTitle,negativeEveningTitle,withNegativeFeelings,jo,serializeJO,habits,serializeHabits,isWeekend,workHabits,cleanWeekendWorkHabits,caffeine,withCaffeine,sleep,serializeSleep,items,morning,split,reconcile,serialize,optional,priorityTitle,secondaryTitle,review,upgrade};
   if(typeof module!=='undefined')module.exports=api;else root.JournalPlans=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

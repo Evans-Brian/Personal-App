@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const plans=require('../static/plans.js');
+const combined='What made me happy, grateful, engaged, or connected?';
+const proud='What am I proud of today?';
+const raw=`### ${combined}\n\nI feel less stressed and more hopeful.\n\n### ${proud}\n\nKept going.\n\n### What would I do differently if I replayed today?\n\nTake a break.\n\n<!-- evening-habits: %7B%22caffeine_last_intake%22%3A%2216%3A00%22%7D -->\n`;
+const expected=raw.replace('### '+proud,'### Negative feelings today\n\n\n### '+proud);
+assert.equal(plans.withNegativeFeelings(raw),expected);
+assert.equal(plans.withNegativeFeelings(expected),expected);
+assert.ok(plans.withNegativeFeelings(raw,'An existing feeling.').includes('### Negative feelings today\n\nAn existing feeling.\n\n'));
+assert.equal(plans.withNegativeFeelings('My custom note.'),'My custom note.');
+const quoted=raw.replace('I feel less stressed and more hopeful.','```markdown\n### Negative feelings today\n```');
+assert.equal(plans.withNegativeFeelings(quoted).split('### Negative feelings today').length-1,2);
+assert.equal(plans.withNegativeFeelings(raw.replaceAll('\n','\r\n')),expected.replaceAll('\n','\r\n'));
+assert.equal(plans.habits(plans.withNegativeFeelings(raw)).value.caffeine_last_intake,'16:00');
+console.log('Evening negative-feelings prompt, legacy drafts, metadata, fenced headings and newline checks passed.');

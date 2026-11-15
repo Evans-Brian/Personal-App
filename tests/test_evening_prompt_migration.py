@@ -41,7 +41,8 @@ class EveningPromptMigrationTests(unittest.TestCase):
             journal = Journal(folder)
             current = journal.read('2026-10-01')
             saved = journal.save(current['date'], 'evening', FIXTURES[0]['before'], current['revision'])
-            self.assertEqual(saved['sections']['evening'].strip(), FIXTURES[0]['after'].strip())
+            expected = FIXTURES[0]['after'].replace('### What am I proud of today?', '### Negative feelings today\n\n\n### What am I proud of today?')
+            self.assertEqual(saved['sections']['evening'].strip(), expected.strip())
 
     def test_existing_backup_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as folder:

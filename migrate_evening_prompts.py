@@ -16,8 +16,8 @@ MERGED_PROMPTS = {
 }
 
 
-def normalize_text(text):
-    """Retain answers and control metadata; combine only recognized questions."""
+def evening_blocks(text):
+    """Find question and control blocks without treating fenced text as headings."""
     boundaries, offset, fence = [], 0, None
     for line in text.splitlines(keepends=True):
         plain = line.rstrip('\r\n')
@@ -33,12 +33,17 @@ def normalize_text(text):
             elif heading or control:
                 boundaries.append((offset, offset + len(line), heading[1].strip() if heading else None))
         offset += len(line)
+    return [(start, body, boundaries[index+1][0] if index+1 < len(boundaries) else len(text), title)
+            for index, (start, body, title) in enumerate(boundaries)]
+
+
+def normalize_text(text):
+    """Retain answers and control metadata; combine only recognized questions."""
+    blocks = evening_blocks(text)
     targets = set(MERGED_PROMPTS) | {COMBINED_PROMPT}
-    selected = [title for _, _, title in boundaries if title in targets]
+    selected = [title for _, _, _, title in blocks if title in targets]
     if not selected or (selected == [COMBINED_PROMPT]):
         return text
-    blocks = [(start, body, boundaries[index+1][0] if index+1 < len(boundaries) else len(text), title)
-              for index, (start, body, title) in enumerate(boundaries)]
     combined, answers = [], {title: [] for title in MERGED_PROMPTS}
     for start, body, end, title in blocks:
         answer = text[body:end].strip()
@@ -53,7 +58,7 @@ def normalize_text(text):
         if answers[title]:
             combined.append(label + ':' + newline + (newline * 2).join(answers[title]))
     merged = '### ' + COMBINED_PROMPT + newline * 2 + (newline * 2).join(combined) + newline * 2
-    output, inserted = [text[:boundaries[0][0]]], False
+    output, inserted = [text[:blocks[0][0]]], False
     for start, body, end, title in blocks:
         if title in targets:
             if not inserted:
