@@ -9,7 +9,7 @@
   const mins=value=>valid(value)?`${Math.round(value)}m`:'—';
   const awakeningNote=night=>night.awakening_timing_unknown?`${valid(night.waso_minutes)?'Self-reported awake time: '+mins(night.waso_minutes)+'. ':''}Exact time of the overnight awakening is unknown; this does not refer to your final wake-up. The awake position shown on the timeline is a guess and is excluded from hourly waking analysis.`:null;
   const metric=(value,unit='')=>valid(value)?`${Number(value.toFixed(1))}${unit}`:'—';
-  const clock=value=>typeof value==='string'?clockNumber(Number(value.slice(11,13))*60+Number(value.slice(14,16))):'—';
+  const clock=value=>typeof value==='string'?clockNumber(Number(value.slice(11,13))*60+Number(value.slice(14,16))+Number(value.slice(17,19)||0)/60):'—';
   const clockNumber=value=>{if(!valid(value))return '—';const time=((Math.round(value)%1440)+1440)%1440,h=Math.floor(time/60);return `${h%12||12}:${String(time%60).padStart(2,'0')} ${h<12?'a.m.':'p.m.'}`;};
   const dateKey=value=>`${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
   const svgNode=(tag,attrs={},text)=>{const item=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attrs))item.setAttribute(key,String(value));if(text!=null)item.textContent=text;return item;};
@@ -84,12 +84,12 @@
   }
   function overview(){const box=$('sleep-overview');box.replaceChildren();const s=data.summary;
     for(const [name,value,detail] of [
-      ['Typical bedtime',clockNumber(s.bedtime_clock.median),`Median · ${s.bedtime_clock.n} nights`],
-      ['Estimated sleep onset',clockNumber(s.onset_clock.median),`Median · ${s.onset_clock.n} nights`],
-      ['Typical final wake',clockNumber(s.wake_clock.median),`Median · ${s.wake_clock.n} nights`],
-      ['Time asleep',duration(s.asleep_minutes.median),`Median · ${s.asleep_minutes.n} nights`],
-      ['Awake during sleep',mins(s.waso_minutes.median),`Median between first and last sleep · ${s.waso_minutes.n} nights`],
-      ['Total awake in bed',mins(s.awake_minutes.median),`Median including night’s edges · ${s.awake_minutes.n} nights`]
+      ['Typical first start',clockNumber(s.first_bedtime_clock.median),`All recorded periods · ${s.first_bedtime_clock.n} nights`],
+      ['Typical first sleep onset',clockNumber(s.first_onset_clock.median),`Estimated or self-reported · ${s.first_onset_clock.n} nights`],
+      ['Typical last wake / end',clockNumber(s.last_wake_clock.median),`All recorded periods · ${s.last_wake_clock.n} nights`],
+      ['Total time asleep',duration(s.all_sleep_minutes.median),`Median across all periods · ${s.all_sleep_minutes.n} nights`],
+      ['Main session awake during sleep',mins(s.waso_minutes.median),`Median · ${s.waso_minutes.n} nights`],
+      ['Main session awake in bed',mins(s.awake_minutes.median),`Median including session’s edges · ${s.awake_minutes.n} nights`]
     ]){const item=node('div');item.append(node('span',name),node('strong',value),node('small',detail));box.append(item);}
   }
   function timeline(){const container=$('sleep-timeline');container.replaceChildren();const inner=node('div',null,'sleep-timeline-inner');
@@ -97,21 +97,32 @@
     const left=22*60,right=38*60;const axis=node('div',null,'sleep-axis');for(let hour=22;hour<=38;hour+=4)axis.append(node('span',clockNumber(hour*60)));inner.append(axis);
     for(const night of [...data.nights].reverse().slice(0,visibleNights)){
       const button=node('button',null,'sleep-night-row'),label=node('span',null,'sleep-night-label');
-      const manual=night.data_source==='manual',total=duration(night.asleep_minutes);
+      const periods=data.sessions?.filter(item=>item.day===night.day)||[night],manual=periods.some(item=>item.data_source==='manual'),oura=periods.some(item=>item.data_source!=='manual');
+      const asleep=Object.hasOwn(night,'all_sleep_minutes')?night.all_sleep_minutes:night.asleep_minutes,total=duration(asleep),guessed=periods.some(item=>item.stages_estimated);
       button.type='button';button.setAttribute('aria-pressed',String(night.id===selected));
-      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(night.asleep_minutes)?total+' asleep':'total sleep unknown'}${manual?'; manual entry':''}${night.stages_estimated?'; light, deep and REM stages are guesses':''}${night.awakening_timing_unknown?'; overnight awakening clock time unknown':''}`);
+      button.setAttribute('aria-label',`Inspect sleep on ${night.day}; ${valid(asleep)?total+' asleep':'total sleep unknown'}${manual?(oura?'; Oura and manual periods':'; manual entry'):''}${guessed?'; light, deep and REM stages are guesses':''}${night.awakening_timing_unknown?'; overnight awakening clock time unknown':''}`);
       label.append(node('span',night.day.slice(5)),node('strong',total,'sleep-night-total'));
-      if(manual||night.stages_estimated)label.append(node('small',manual?(night.stages_estimated?'Manual · guessed stages':'Manual entry'):'Guessed stages'));
+      if(manual||guessed)label.append(node('small',manual?(oura?'Oura + manual':guessed?'Manual · guessed stages':'Manual entry'):'Guessed stages'));
+      if(night.overlapping_periods)label.append(node('small','Overlapping periods · total unknown'));
       if(night.awakening_timing_unknown)label.append(node('small','Night waking time unknown'));
       button.append(label);
-      const track=node('span',null,'sleep-track'),base=night.bedtime_clock;
-      const runs=night.stages.length?night.stages:[{stage:'unknown',start_seconds:0,end_seconds:night.in_bed_minutes*60}];
-      for(const run of runs){const start=base+run.start_seconds/60,end=base+run.end_seconds/60,clippedStart=Math.max(left,start),clippedEnd=Math.min(right,end);if(clippedEnd<=clippedStart)continue;
-        const stage={'1':'deep','2':'light','3':'rem','4':'awake'}[run.stage];
-        const provenance=stage==='awake'&&night.awakening_timing_unknown?' (illustrative placement; actual awakening time unknown)':night.stages_estimated&&stage&&stage!=='awake'?' (illustrative guess)':manual?' (self-reported)':'';
-        const segment=node('span',null,'sleep-segment'+(stage?' stage-'+stage:''));segment.style.left=`${(clippedStart-left)/(right-left)*100}%`;segment.style.width=`${(clippedEnd-clippedStart)/(right-left)*100}%`;segment.title=`${night.day} · ${stage||'In bed; stages unavailable'}${provenance} · ${clockNumber(start)}–${clockNumber(end)}`;track.append(segment);
+      const tracks=node('span',null,'sleep-tracks');
+      const position=value=>{const day=Date.parse(night.day+'T00:00:00Z'),date=Date.parse(value.slice(0,10)+'T00:00:00Z');return 1440+(date-day)/60000+Number(value.slice(11,13))*60+Number(value.slice(14,16))+Number(value.slice(17,19)||0)/60;};
+      for(const source of ['oura','manual']){
+        const group=periods.filter(item=>(item.data_source==='manual'?'manual':'oura')===source);if(!group.length)continue;
+        const track=node('span',null,'sleep-track');track.setAttribute('aria-label',source==='manual'?'Manual, self-reported periods':'Oura periods');
+        const segment=(start,end,stage,title,reported=false)=>{const clippedStart=Math.max(left,start),clippedEnd=Math.min(right,end);if(clippedEnd<=clippedStart)return;const item=node('span',null,'sleep-segment'+(stage?' stage-'+stage:'')+(reported?' sleep-manual-segment':''));item.style.left=`${(clippedStart-left)/(right-left)*100}%`;item.style.width=`${(clippedEnd-clippedStart)/(right-left)*100}%`;item.title=`${night.day} · ${title} · ${clockNumber(start)}–${clockNumber(end)}`;track.append(item);};
+        for(const period of group){
+          const reported=source==='manual',base=period.bedtime?position(period.bedtime):period.bedtime_clock;
+          const before=period.reported_awake_before_sleep;if(before)segment(position(before.start),position(before.end),'awake','Manual · awake (self-reported)',true);
+          const runs=period.stages.length?period.stages:[{stage:'unknown',start_seconds:0,end_seconds:period.in_bed_minutes*60}];
+          for(const run of runs){const stage={'1':'deep','2':'light','3':'rem','4':'awake'}[run.stage],provenance=stage==='awake'&&period.awakening_timing_unknown?' (illustrative placement; actual awakening time unknown)':period.stages_estimated&&stage&&stage!=='awake'?' (illustrative guess)':reported?' (self-reported)':'';
+            segment(base+run.start_seconds/60,base+run.end_seconds/60,stage||(reported?'unknown':null),`${reported?'Manual':'Oura'} · ${stage||(reported?'Sleep; stages unavailable':'In bed; stages unavailable')}${provenance}`,reported);
+          }
+        }
+        tracks.append(track);
       }
-      button.append(track);button.addEventListener('click',()=>selectNight(night.id,true));inner.append(button);
+      button.append(tracks);button.addEventListener('click',()=>selectNight(night.id,true));inner.append(button);
     }
     container.append(inner);$('sleep-timeline-more').hidden=visibleNights>=data.nights.length;
   }
@@ -143,11 +154,15 @@
     interactivePlot(target,svg,labeled,[{key:'awake_minutes',name:'Total awake minutes',color:colors.awake}],{px,py,width:w,top:15,bottom:base,format:mins,label,expanded,initialIndex,open});
   }
   function renderNight(){const box=$('sleep-night-detail');box.replaceChildren();const night=data.nights.find(item=>item.id===selected);if(!night){box.append(node('p','Choose a night with a main sleep session.','sleep-empty'));return;}
+    nightMetrics(box,[['Total sleep · all periods',duration(night.all_sleep_minutes)],['First recorded start',clock(night.first_bedtime)],['First sleep onset',clock(night.first_onset)],['Last wake / end',clock(night.last_wake)]]);
+    if(night.overlapping_periods)box.append(node('p','Recording windows overlap. Both sources are shown, but the combined total is unknown to avoid double counting.','small'));
+    box.append(node('p','The timeline and total above include all recorded periods. Measurements below describe the main session; manual additions do not supply measured stage or physiological values. Blank gaps are unrecorded, not assumed awake.','small'));
+    box.append(node('h3','Main session measurements'));
     if(night.data_source==='manual')box.append(node('p',night.stages_estimated?'Manual entry: sleep and wake times are self-reported and may be approximate. Light, deep and REM intervals are illustrative guesses, not Oura measurements, and are excluded from stage-duration trends. The reported sleep window is used for time in bed; actual bedtime and sleep latency are unknown.':'Manual entry: self-reported sleep times.','small'));
     box.append(node('p',`${night.day} · ${night.stages_estimated?'Illustrative guessed stages':night.stage_resolution_seconds?night.stage_resolution_seconds+'-second stages':'Stages unavailable'} · ${night.period_count} recorded sleep period${night.period_count===1?'':'s'}`,'small'));
     nightMetrics(box,[['In bed',clock(night.bedtime)],['Estimated sleep onset',clock(night.onset)],['Final wake',clock(night.final_wake)],['Out of bed',clock(night.out_of_bed)],['Time asleep',duration(night.asleep_minutes)],['Time to fall asleep',mins(night.latency_minutes)],['Awake during sleep',mins(night.waso_minutes)],['Longest awakening',mins(night.longest_wake_minutes)],['Awakenings ≥5 min',metric(night.awakenings_5m)],['Total awake in bed',mins(night.awake_minutes)],['Sleep efficiency',metric(night.efficiency,'%')],['Sleep score',metric(night.sleep_score,' / 100')],['Average HRV',metric(night.hrv,' ms')],['Average heart rate',metric(night.heart_rate,' bpm')],['Lowest heart rate',metric(night.lowest_heart_rate,' bpm')],['Breathing rate',metric(night.breathing_rate,' / min')],['SpO₂ average',metric(night.spo2,'%')],['Breathing disturbance index',metric(night.breathing_disturbance_index)],['Temperature deviation',metric(night.temperature_deviation,' °C')],['Restless periods',metric(night.restless_periods)]]);
     const warnings=[];if(night.low_battery)warnings.push('Oura flagged a low battery.');if(night.offset_changed)warnings.push('The UTC offset changed during this session. Stage times retain the starting offset.');if(night.main_period_count>1)warnings.push('Multiple main-sleep sessions: nightly trends use the longest; other sessions are listed below.');if(!night.stages.length)warnings.push('Usable stages are missing. Awakening timings are unknown.');if(warnings.length)box.append(node('p',warnings.join(' '),'small'));
-    box.append(node('h3','Overnight awakenings lasting at least five minutes'));
+    box.append(node('h3','Main session awakenings lasting at least five minutes'));
     const events=night.awakenings.filter(item=>item.minutes>=5);
     const timingNote=awakeningNote(night);
     if(timingNote)box.append(node('p',timingNote,'small'));
@@ -160,19 +175,24 @@
     const intake=night.caffeine_last_intake,caffeineText=intake==='none'?'no caffeine':intake?`last intake at ${clockNumber(Number(intake.slice(0,2))*60+Number(intake.slice(3)))}`:night.caffeine_after_4pm===null?'not logged':`${night.caffeine_after_4pm?'after 4 p.m.':'none after 4 p.m.'} (exact time not recorded)`;
     box.append(node('p',`Evening caffeine log (${night.caffeine_day}): ${caffeineText}${caffeineText.endsWith('.')?'':'.'}${reportText}`,'small'));
     const curves=node('div',null,'sleep-physiology-night');for(const [key,title,color] of [['heart_rate','Heart rate (bpm)',colors.asleep],['hrv','HRV (ms)',colors.hrv]]){const cell=node('div');samples(cell,night,key,title,color);curves.append(cell);}box.append(curves);
-    const others=data.sessions.filter(item=>item.day===night.day && item.id!==night.id);if(others.length){box.append(node('h3','Other recorded sleep periods'));for(const item of others)box.append(node('p',`${item.type||'Sleep'}: ${clock(item.bedtime)}–${clock(item.out_of_bed)}, ${duration(item.asleep_minutes)} asleep.`,'small'));}
+    const periods=data.sessions.filter(item=>item.day===night.day);box.append(node('h3','All recorded sleep periods'));
+    for(const item of periods){
+      const manual=item.data_source==='manual',source=manual?'Manual · self-reported':'Oura',stageNote=item.stages_estimated?' Light, deep and REM stages are guesses.':!item.stages.length?' Stages unavailable.':'';
+      box.append(node('p',`${source}: ${clock(item.onset||item.bedtime)}–${clock(item.final_wake||item.out_of_bed)}, ${duration(item.asleep_minutes)} asleep.${stageNote}`,'small'));
+      const awake=item.reported_awake_before_sleep;if(awake)box.append(node('p',`Before this manual sleep: awake ${clock(awake.start)}–${clock(awake.end)} (${mins(awake.minutes)}, self-reported).`,'small'));
+    }
     const rec=night.bedtime_recommendation;if(rec?.recommendation)box.append(node('p','Oura bedtime recommendation: '+rec.recommendation.replaceAll('_',' ')+'.','small'));
     const stress=night.daytime_stress;if(stress)box.append(node('p',`Daytime stress context on ${stress.day}: ${mins(valid(stress.stress_high)?stress.stress_high/60:null)} high stress; ${mins(valid(stress.recovery_high)?stress.recovery_high/60:null)} recovery.`,'small'));
   }
-  function table(){const box=$('sleep-table');box.replaceChildren();const table=node('table',null,'sleep-table'),head=node('tr');for(const title of ['Night','Bedtime','Onset','Final wake','Asleep','Awake in bed','Awake during sleep','Longest wake','Latency','Efficiency'])head.append(node('th',title));table.append(head);
-    for(const night of [...data.nights].reverse()){const row=node('tr'),cell=node('td'),button=node('button',night.day);button.addEventListener('click',()=>selectNight(night.id,true));cell.append(button);row.append(cell);for(const value of [clock(night.bedtime),clock(night.onset),clock(night.final_wake),duration(night.asleep_minutes),mins(night.awake_minutes),mins(night.waso_minutes),mins(night.longest_wake_minutes),mins(night.latency_minutes),metric(night.efficiency,'%')])row.append(node('td',value));table.append(row);}box.append(table);
+  function table(){const box=$('sleep-table');box.replaceChildren();const table=node('table',null,'sleep-table'),head=node('tr');for(const title of ['Night','First start','First onset','Last wake / end','Total asleep','Main awake in bed','Main awake during sleep','Main longest wake','Main latency','Main efficiency'])head.append(node('th',title));table.append(head);
+    for(const night of [...data.nights].reverse()){const row=node('tr'),cell=node('td'),button=node('button',night.day);button.addEventListener('click',()=>selectNight(night.id,true));cell.append(button);row.append(cell);for(const value of [clock(night.first_bedtime),clock(night.first_onset),clock(night.last_wake),duration(night.all_sleep_minutes),mins(night.awake_minutes),mins(night.waso_minutes),mins(night.longest_wake_minutes),mins(night.latency_minutes),metric(night.efficiency,'%')])row.append(node('td',value));table.append(row);}box.append(table);
   }
   function render(){overview();const choices=$('sleep-night');choices.replaceChildren();for(const night of [...data.nights].reverse()){const option=node('option',night.day);option.value=night.id;choices.append(option);}if(!data.nights.some(item=>item.id===selected))selected=data.nights.at(-1)?.id;choices.value=selected||'';timeline();renderNight();
     const insights=$('sleep-insights');insights.replaceChildren();for(const text of data.insights)insights.append(node('p',text,'sleep-insight'));
     const monthly=node('table',null,'sleep-table'),heading=node('tr');for(const name of ['Month','Nights','Mean asleep','Mean awake during sleep','Mean latency'])heading.append(node('th',name));monthly.append(heading);for(const month of data.monthly){const row=node('tr');for(const value of [month.month,month.n,duration(month.asleep.mean),mins(month.awake.mean),mins(month.latency.mean)])row.append(node('td',value));monthly.append(row);}const monthlyScroll=node('div',null,'sleep-chart-scroll');monthlyScroll.append(monthly);insights.append(monthlyScroll);
-    chart($('sleep-duration-chart'),data.nights,[{key:'asleep_minutes',name:'Asleep',color:colors.asleep},{key:'awake_minutes',name:'All awake in bed',color:colors.awake},{key:'waso_minutes',name:'Awake during sleep',color:colors.onset}],{format:v=>`${Math.round(v)}m`,label:'Minutes asleep and awake by night'});
-    const timing=data.nights.map(n=>({...n,wake_unwrapped:valid(n.wake_clock)?n.wake_clock+1440:null}));
-    chart($('sleep-timing-chart'),timing,[{key:'bedtime_clock',name:'Bedtime',color:colors.asleep},{key:'onset_clock',name:'Onset',color:colors.onset},{key:'wake_unwrapped',name:'Final wake / end',color:colors.wake}],{format:clockNumber,zero:false,label:'Bedtime, estimated sleep onset and final wake by date'});
+    chart($('sleep-duration-chart'),data.nights,[{key:'all_sleep_minutes',name:'Asleep · all periods',color:colors.asleep},{key:'awake_minutes',name:'Main: awake in bed',color:colors.awake},{key:'waso_minutes',name:'Main: awake during sleep',color:colors.onset}],{format:v=>`${Math.round(v)}m`,label:'Total sleep and main-session awake minutes by night'});
+    const timing=data.nights.map(n=>({...n,wake_unwrapped:valid(n.last_wake_clock)?n.last_wake_clock+1440:null}));
+    chart($('sleep-timing-chart'),timing,[{key:'first_bedtime_clock',name:'First start',color:colors.asleep},{key:'first_onset_clock',name:'First onset',color:colors.onset},{key:'wake_unwrapped',name:'Last wake / end',color:colors.wake}],{format:clockNumber,zero:false,label:'First recorded start, sleep onset and last wake by date'});
     chart($('sleep-wake-chart'),data.nights,[{key:'longest_wake_minutes',name:'Longest awakening',color:colors.awake},{key:'latency_minutes',name:'Latency',color:colors.asleep}],{format:v=>`${Math.round(v)}m`,label:'Longest awakening and time to fall asleep in minutes'});
     chart($('sleep-physiology-chart'),data.nights,[{key:'heart_rate',name:'Heart rate (bpm)',color:colors.asleep},{key:'hrv',name:'HRV (ms)',color:colors.hrv}],{format:v=>String(Math.round(v)),label:'Average sleeping heart rate in bpm and HRV in milliseconds'});
     chart($('sleep-stages-chart'),data.nights,[{key:'deep_minutes',name:'Deep',color:colors.deep},{key:'light_minutes',name:'Light',color:colors.light},{key:'rem_minutes',name:'REM',color:colors.rem}],{format:v=>`${Math.round(v)}m`,label:'Deep, light and REM sleep minutes by night'});
@@ -188,7 +208,7 @@
       $('sleep-from').value=data.start;
       for(const field of ['sleep-from','sleep-to']){if(analysisStart)$(field).min=analysisStart;else $(field).removeAttribute('min');}
       render();const inventory=data.inventory.find(item=>item.kind==='sleep');
-      $('sleep-status').textContent=`${data.coverage.nights} recorded main-sleep nights · ${data.coverage.stage_nights} with usable stages · ${data.coverage.missing_days} calendar days without a main-sleep record. ${inventory?`Included sleep history: ${inventory.start} through ${inventory.end}.`:''}`;
+      $('sleep-status').textContent=`${data.coverage.nights} recorded nights · ${data.coverage.stage_nights} with usable main-session stages · ${data.coverage.missing_days} calendar days without a night record. ${inventory?`Included sleep history: ${inventory.start} through ${inventory.end}.`:''}`;
     }catch(error){if(id===loading)$('sleep-status').textContent=error.message;}
   }
   async function importStatus(){

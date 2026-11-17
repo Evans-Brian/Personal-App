@@ -31,7 +31,7 @@ vm.runInContext(formatter+'\n'+duration+'\n'+renderer+'\ntimeline();',context);
 const [axis,...rows]=controls['sleep-timeline'].children[0].children;
 assert.deepEqual(axis.children.map(label=>label.text),['10:00 p.m.','2:00 a.m.','6:00 a.m.','10:00 a.m.','2:00 p.m.']);
 const row=id=>rows[nights.length-1-nights.findIndex(n=>n.id===id)];
-const segments=id=>row(id).children[1].children;
+const segments=id=>row(id).children[1].children.flatMap(track=>track.children);
 for(const [id,left,width] of [['early','0%','6.25%'],['late','93.75%','6.25%'],['spanning','0%','100%'],['unstaged','6.25%','6.25%'],['inside','25%','6.25%']]){
   assert.equal(segments(id).length,1);
   assert.equal(segments(id)[0].style.left,left,id);
@@ -60,3 +60,32 @@ vm.runInContext(minuteFormatter+'\n'+wakeNote,context);
 assert.equal(vm.runInContext('awakeningNote({awakening_timing_unknown:false})',context),null);
 assert.match(vm.runInContext('awakeningNote({awakening_timing_unknown:true,waso_minutes:15})',context),/Self-reported awake time: 15m\. Exact time of the overnight awakening is unknown/);
 assert.match(vm.runInContext('awakeningNote({awakening_timing_unknown:true,waso_minutes:null})',context),/^Exact time of the overnight awakening is unknown/);
+
+// A date with both sources must render both lanes and the known intervening wake.
+const mixed={id:'ring',day:'2026-10-02',data_source:'oura',asleep_minutes:300,all_sleep_minutes:420};
+const periods=[{...mixed,bedtime:'2026-10-02T01:00:00-04:00',in_bed_minutes:300,stages:[{stage:'2',start_seconds:0,end_seconds:18000}]},
+  {id:'manual',day:mixed.day,data_source:'manual',bedtime:'2026-10-02T07:00:00-04:00',in_bed_minutes:120,stages:[],
+   reported_awake_before_sleep:{start:'2026-10-02T06:00:00-04:00',end:'2026-10-02T07:00:00-04:00',minutes:60}}];
+context.data={nights:[mixed],sessions:periods};
+const unchanged=JSON.stringify(context.data);
+vm.runInContext('timeline()',context);
+const mixedRow=controls['sleep-timeline'].children[0].children[1];
+assert.deepEqual(mixedRow.children[0].children.map(item=>item.text),['10-02','7h 0m','Oura + manual']);
+assert.match(mixedRow.attributes['aria-label'],/7h 0m asleep; Oura and manual periods/);
+const [ringLane,manualLane]=mixedRow.children[1].children;
+assert.equal(ringLane.children.length,1);
+assert.equal(manualLane.children.length,2);
+assert.match(manualLane.children[0].title,/Manual · awake \(self-reported\).*6:00 a.m.–7:00 a.m./);
+assert.equal(manualLane.children[0].style.left,'50%');
+assert.equal(manualLane.children[0].style.width,'6.25%');
+assert.match(manualLane.children[1].className,/stage-unknown.*sleep-manual-segment/);
+assert.match(manualLane.children[1].title,/Manual · Sleep; stages unavailable.*7:00 a.m.–9:00 a.m./);
+assert.equal(manualLane.children[1].style.left,'56.25%');
+assert.equal(manualLane.children[1].style.width,'12.5%');
+assert.equal(JSON.stringify(context.data),unchanged,'Rendering cannot alter either source.');
+mixed.overlapping_periods=true;mixed.all_sleep_minutes=null;
+vm.runInContext('timeline()',context);
+const overlapRow=controls['sleep-timeline'].children[0].children[1];
+assert.equal(overlapRow.children[0].children[1].text,'—','Never substitute the main-session total for an overlapping total.');
+assert.match(overlapRow.children[0].children.at(-1).text,/Overlapping periods/);
+console.log('Mixed-source timeline lanes, combined totals, manual unknown stages, reported awake intervals and overlap checks passed.');

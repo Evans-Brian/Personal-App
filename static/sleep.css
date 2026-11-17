@@ -1,4 +1,5 @@
 /* The night timeline carries the color; the surrounding analysis stays quiet. */
+.sleep-tracks{display:grid;gap:4px;min-width:0}.sleep-manual-segment{outline:1px dashed var(--ink,#283d37);outline-offset:-1px}.sleep-segment.stage-unknown,.sleep-legend .stage-unknown:before{background:repeating-linear-gradient(135deg,var(--surface-soft,#f0f5ee) 0,var(--surface-soft,#f0f5ee) 4px,var(--edge,#829b87) 4px,var(--edge,#829b87) 6px)}
 #sleep-page{--sleep-ink:var(--ink, #283d37);--sleep-deep:var(--chart-deep, #355977);--sleep-light:var(--chart-light, #b5cbd2);--sleep-rem:var(--chart-rem, #7e8fbb);--sleep-awake:var(--chart-awake, #b67c30);--sleep-line:var(--line, #d5ded9)}
 .sleep-heading h1{margin-bottom:12px}.sleep-heading p{max-width:62ch}
 .sleep-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:18px 0;border-block:1px solid var(--sleep-line)}

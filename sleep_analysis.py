@@ -68,7 +68,8 @@ def session(record):
               'longest_wake_minutes': None, 'awakenings_5m': None,
               'stage_resolution_seconds': None, 'stage_coverage': None, 'stages': [], 'awakenings': [], 'disrupted_windows': [],
               'samples': {key: record.get(key) for key in ('heart_rate', 'hrv')},
-              'movement_30_sec': record.get('movement_30_sec'), 'onset_source': None}
+              'movement_30_sec': record.get('movement_30_sec'), 'onset_source': None,
+              'reported_awake_before_sleep': None}
     if result['stages_estimated']:
         # Illustrative colors are not measured stage durations or trend samples.
         for key in ('deep_minutes', 'rem_minutes', 'light_minutes'):
@@ -138,6 +139,18 @@ def session(record):
                 result['waso_minutes'] = round(sum(lengths), 2)
                 result['longest_wake_minutes'] = max(lengths)
                 result['awakenings_5m'] = sum(value >= 5 for value in lengths)
+    if result['data_source'] == 'manual':
+        window = record.get('reported_sleep_window')
+        if isinstance(window, dict) and not result['stages']:
+            first, last = stamp(window.get('start')), stamp(window.get('end'))
+            if first is not None and last is not None and start <= first < last <= end:
+                result.update(onset=first.isoformat(), final_wake=last.isoformat(), onset_source='self-reported times')
+        awake = record.get('reported_awake_before_sleep')
+        if isinstance(awake, dict):
+            first, last = stamp(awake.get('start')), stamp(awake.get('end'))
+            seconds = number(awake.get('duration_seconds'))
+            if first is not None and last is not None and first < last <= start and seconds is not None and abs((last-first).total_seconds()-seconds) <= 1:
+                result['reported_awake_before_sleep'] = {'start': first.isoformat(), 'end': last.isoformat(), 'minutes': round(seconds / 60, 2)}
     if result['onset'] is None and result['latency_minutes'] is not None and result['latency_minutes'] * 60 < duration:
         result['onset'] = (start + timedelta(minutes=result['latency_minutes'])).isoformat()
         result['onset_source'] = 'bedtime + reported latency'
@@ -169,7 +182,8 @@ def caffeine_log(habits):
     return None, legacy if isinstance(legacy, bool) else None
 
 
-METRICS = ('asleep_minutes', 'in_bed_minutes', 'awake_minutes', 'waso_minutes', 'latency_minutes',
+METRICS = ('all_sleep_minutes', 'first_bedtime_clock', 'first_onset_clock', 'last_wake_clock',
+           'asleep_minutes', 'in_bed_minutes', 'awake_minutes', 'waso_minutes', 'latency_minutes',
            'longest_wake_minutes', 'awakenings_5m', 'efficiency', 'hrv', 'heart_rate',
            'lowest_heart_rate', 'breathing_rate', 'deep_minutes', 'rem_minutes', 'light_minutes',
            'spo2', 'breathing_disturbance_index', 'sleep_score', 'temperature_deviation',
@@ -179,27 +193,27 @@ METRICS = ('asleep_minutes', 'in_bed_minutes', 'awake_minutes', 'waso_minutes', 
 def insights(nights, summary, comparison):
     result = []
     if not nights:
-        return ['No main-sleep sessions in this range. Import history or choose another range.']
-    total = summary['asleep_minutes']['median']
+        return ['No overnight or manual sleep sessions in this range. Import history or choose another range.']
+    total = summary['all_sleep_minutes']['median']
     if total is not None:
-        result.append(f'Median main sleep is {round(total)} minutes; median time in bed is {round(summary["in_bed_minutes"]["median"] or 0)} minutes across {len(nights)} recorded nights.')
+        result.append(f'Median total sleep across recorded periods is {round(total)} minutes across {summary["all_sleep_minutes"]["n"]} nights. Awake, stage and physiological summaries describe the main session; separately reported awake intervals are shown on the timeline.')
     staged = [night for night in nights if night['waso_minutes'] is not None]
     if staged:
         long20 = sum(night['longest_wake_minutes'] >= 20 for night in staged)
         long60 = sum(night['longest_wake_minutes'] >= 60 for night in staged)
-        result.append(f'{long20} of {len(staged)} nights with usable stages have a continuous overnight awakening of at least 20 minutes; {long60} have one of at least an hour. These exclude time before first sleep and after final sleep.')
-        result.append(f'Median awake time between first and last sleep is {round(summary["waso_minutes"]["median"])} minutes. Oura’s total awake-in-bed metric also includes the edges of the night, so it can be higher.')
-    if summary['bedtime_clock']['sd'] is not None and summary['wake_clock']['sd'] is not None:
-        result.append(f'Clock-time variability is about {round(summary["bedtime_clock"]["sd"])} minutes for bedtime and {round(summary["wake_clock"]["sd"])} minutes for waking (standard deviations). This describes consistency, not a target sleep schedule.')
+        result.append(f'{long20} of {len(staged)} nights with usable main-session stages have a continuous awakening of at least 20 minutes; {long60} have one of at least an hour. These exclude time outside the main session.')
+        result.append(f'Median awake time within the main session is {round(summary["waso_minutes"]["median"])} minutes. Oura’s awake-in-bed metric also includes that session’s edges, so it can be higher.')
+    if summary['first_bedtime_clock']['sd'] is not None and summary['last_wake_clock']['sd'] is not None:
+        result.append(f'Clock-time variability is about {round(summary["first_bedtime_clock"]["sd"])} minutes for first recorded start and {round(summary["last_wake_clock"]["sd"])} minutes for last wake/end (standard deviations). This describes consistency, not a target sleep schedule.')
     months = {}
     for night in staged:
         months.setdefault(night['day'][:7], []).append(night['waso_minutes'])
     comparable = [(month, values) for month, values in sorted(months.items()) if len(values) >= 7]
     if len(comparable) > 1:
         earlier, later = comparable[0], comparable[-1]
-        result.append(f'Awake time during sleep averaged {round(mean(earlier[1]))} minutes in {earlier[0]} ({len(earlier[1])} nights) and {round(mean(later[1]))} minutes in {later[0]} ({len(later[1])} nights). These months may be incomplete and have unequal coverage.')
+        result.append(f'Main-session awake time during sleep averaged {round(mean(earlier[1]))} minutes in {earlier[0]} ({len(earlier[1])} nights) and {round(mean(later[1]))} minutes in {later[0]} ({len(later[1])} nights). These months may be incomplete and have unequal coverage.')
     if comparison:
-        for metric, title in [('asleep_minutes', 'Time asleep'), ('waso_minutes', 'Awake time during sleep')]:
+        for metric, title in [('all_sleep_minutes', 'Total time asleep across recorded periods'), ('waso_minutes', 'Main-session awake time during sleep')]:
             current, previous = comparison['recent'][metric], comparison['previous'][metric]
             if current['n'] >= 5 and previous['n'] >= 5:
                 delta = round(current['mean'] - previous['mean'])
@@ -249,12 +263,28 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
         main = [item for item in periods if item['type'] == 'long_sleep']
         # Old records without a type are usable if they describe a genuine overnight interval.
         main += [item for item in periods if item['type'] is None and (item['in_bed_minutes'] or 0) >= 180]
-        if not main:
+        candidates = main or [item for item in periods if item['data_source'] == 'manual']
+        if not candidates:
             continue
-        night = dict(max(main, key=lambda item: item['asleep_minutes'] or 0))
+        night = dict(max(candidates, key=lambda item: item['asleep_minutes'] or 0))
         night['period_count'] = len(periods)
         night['main_period_count'] = len(main)
-        night['all_sleep_minutes'] = round(sum(item['asleep_minutes'] or 0 for item in periods), 2)
+        ordered = sorted(periods, key=lambda item: stamp(item['bedtime']))
+        latest_end = stamp(ordered[0]['out_of_bed'])
+        overlap = False
+        for item in ordered[1:]:
+            overlap |= stamp(item['bedtime']) < latest_end
+            latest_end = max(latest_end, stamp(item['out_of_bed']))
+        night['overlapping_periods'] = overlap
+        night['all_sleep_minutes'] = (round(sum(item['asleep_minutes'] for item in periods), 2)
+                                      if not overlap and all(item['asleep_minutes'] is not None for item in periods) else None)
+        last_period = max(periods, key=lambda item: stamp(item['final_wake'] or item['out_of_bed']))
+        night['first_bedtime'] = ordered[0]['bedtime']
+        night['first_onset'] = ordered[0]['onset']
+        night['last_wake'] = last_period['final_wake'] or last_period['out_of_bed']
+        night['first_bedtime_clock'] = clock_minutes(night['first_bedtime'], bedtime=True)
+        night['first_onset_clock'] = clock_minutes(night['first_onset'], bedtime=True)
+        night['last_wake_clock'] = clock_minutes(night['last_wake'])
         night['bedtime_clock'] = clock_minutes(night['bedtime'], bedtime=True)
         night['onset_clock'] = clock_minutes(night['onset'], bedtime=True)
         night['wake_clock'] = clock_minutes(night['final_wake'] or night['out_of_bed'])
@@ -283,7 +313,7 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
     for month in sorted({night['day'][:7] for night in nights}):
         group = [night for night in nights if night['day'].startswith(month)]
         monthly.append({'month':month, 'n':len(group),
-                        'asleep':aggregate([night['asleep_minutes'] for night in group]),
+                        'asleep':aggregate([night['all_sleep_minutes'] for night in group]),
                         'awake':aggregate([night['waso_minutes'] for night in group]),
                         'latency':aggregate([night['latency_minutes'] for night in group])})
     comparison = None
@@ -317,4 +347,4 @@ def analyze(store, journal=None, start=None, end=None, analysis_start=None):
             'coverage': {'nights': len(nights), 'stage_nights': sum(night['waso_minutes'] is not None for night in nights),
                          'calendar_days': (last-first).days+1,
                          'missing_days': (last-first).days+1-len(nights)},
-            'method': 'One longest main-sleep session per Oura-assigned day drives nightly trends. All other sessions remain in the night view. Awake during sleep sums stage-awake intervals between first and last sleep; awakening counts use continuous runs of at least five minutes. For manual awakenings with unknown clock times, reported durations are used and guessed placements are excluded from hourly waking analysis. Times use each recorded UTC offset; stage timestamps keep the start offset on nights crossing an offset change. Ring estimates can miss quiet wakefulness. No data is inferred across gaps or missing nights.'}
+            'method': 'The timeline, total sleep, first recorded start/onset and last wake/end include every Oura and manual period on the assigned date. Overlapping recording windows are displayed separately and excluded from total-sleep summaries to avoid double counting. Unknown stages and unrecorded gaps are not guessed. Explicitly reported awake intervals are drawn separately. Awake, latency, stage, score and physiological trends retain the longest main session (or a manual session when no main session exists); they do not infer measurements for manual additions. Awakening counts use continuous runs of at least five minutes. Guessed awakening placements are excluded from hourly waking analysis. Times use each recorded UTC offset; stage timestamps keep the start offset on nights crossing an offset change. Ring estimates can miss quiet wakefulness.'}
